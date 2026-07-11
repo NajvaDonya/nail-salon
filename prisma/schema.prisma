@@ -1,0 +1,95 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Salon {
+  id           String    @id @default(cuid())
+  name         String
+  slug         String    @unique
+  description  String?
+  phone        String?
+  address      String?
+  city         String?
+  openingHours Json?
+  settings     Json?
+  isActive     Boolean   @default(true)
+
+  users        User[]
+  services     Service[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model User {
+  id           String    @id @default(cuid())
+  phone        String    @unique
+  email        String?
+  firstName    String?
+  lastName     String?
+  name         String
+  passwordHash String
+  avatar       String?
+  role         Role
+  salonId      String?
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+
+  salon        Salon?        @relation(fields: [salonId], references: [id])
+  staffProfile StaffProfile?
+
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model StaffProfile {
+  id          String  @id @default(cuid())
+  userId      String  @unique
+  bio         String?
+  specialties Json?
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model Service {
+  id       String  @id @default(cuid())
+  salonId  String
+  name     String
+  duration Int
+  price    Int
+  category String
+  isActive Boolean @default(true)
+
+  salon Salon @relation(fields: [salonId], references: [id])
+
+  @@unique([salonId, name])
+}
+
+model WorkingHours {
+  id        String  @id @default(cuid())
+  staffId   String
+  dayOfWeek String
+  startTime String
+  endTime   String
+  isActive  Boolean @default(true)
+
+  @@unique([staffId, dayOfWeek])
+}
+
+model StaffService {
+  id        String @id @default(cuid())
+  staffId   String
+  serviceId String
+
+  @@unique([staffId, serviceId])
+}
+
+enum Role {
+  MANAGER
+  STAFF
+  CUSTOMER
+}
