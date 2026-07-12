@@ -96,3 +96,31 @@ export const smsTemplates = {
   newAppointmentStaff: (staffName: string, customerName: string, serviceName: string, date: string, time: string) =>
     `${staffName} عزیز، نوبت جدید: ${customerName} - ${serviceName} - ${date} ساعت ${time}`,
 }
+
+export async function sendAppointmentConfirmation(
+  phone: string,
+  details: {
+    salonName: string
+    trackingCode: string
+    date: string
+    time: string
+    staffName: string
+    services: string
+    customerName?: string
+  }
+): Promise<boolean> {
+  const customerName = details.customerName || 'مشتری'
+  const message = [
+    smsTemplates.appointmentConfirmed(
+      customerName,
+      details.services,
+      details.date,
+      details.time,
+      details.salonName
+    ),
+    `کد پیگیری: ${details.trackingCode}`,
+    `پرسنل: ${details.staffName}`,
+  ].join('\n')
+
+  return smsService.sendNotification(phone, message)
+}

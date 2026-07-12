@@ -81,3 +81,12 @@ export function formatPersianDuration(minutes: number): string {
   }
   return `${englishToPersian(hours.toString())} ساعت و ${englishToPersian(mins.toString())} دقیقه`
 }
+
+// Aliases used by booking components
+export const formatJalaliDate = formatPersianDate
+export const formatJalaliTime = formatPersianTime
+export const convertPersianToEnglishDigits = persianToEnglish
+
+export function getJalaliWeekDays(): string[] {
+  return ['یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنج‌شنبه', 'جمعه', 'شنبه']
+}

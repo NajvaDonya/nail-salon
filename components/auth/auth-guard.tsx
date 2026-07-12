@@ -1,7 +1,8 @@
 'use client'
 
 import { useAuth } from '@/contexts/auth-context'
-import { useRouter } from 'next/navigation'
+import { getPostLoginRedirect } from '@/lib/auth-redirect'
+import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, type ReactNode } from 'react'
 import { Loader2 } from 'lucide-react'
 import type { UserRole } from '@/lib/types'
@@ -12,26 +13,32 @@ interface AuthGuardProps {
   redirectTo?: string
 }
 
+function getRoleRedirect(role: UserRole): string {
+  return getPostLoginRedirect(role)
+}
+
 export function AuthGuard({ children, allowedRoles, redirectTo = '/auth/login' }: AuthGuardProps) {
   const { user, loading } = useAuth()
   const router = useRouter()
+  const pathname = usePathname()
 
   useEffect(() => {
-    if (!loading) {
-      if (!user) {
-        router.push(redirectTo)
-      } else if (allowedRoles && !allowedRoles.includes(user.role)) {
-        // Redirect based on role
-        if (user.role === 'CUSTOMER') {
-          router.push('/booking')
-        } else if (user.role === 'STAFF') {
-          router.push('/staff')
-        } else if (user.role === 'MANAGER' || user.role === 'SUPER_ADMIN') {
-          router.push('/dashboard')
-        }
+    if (loading) return
+
+    if (!user) {
+      if (pathname !== redirectTo) {
+        router.replace(redirectTo)
+      }
+      return
+    }
+
+    if (allowedRoles && !allowedRoles.includes(user.role)) {
+      const destination = getRoleRedirect(user.role)
+      if (pathname !== destination) {
+        router.replace(destination)
       }
     }
-  }, [user, loading, allowedRoles, redirectTo, router])
+  }, [user, loading, allowedRoles, redirectTo, router, pathname])
 
   if (loading) {
     return (

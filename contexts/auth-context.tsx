@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react'
 import type { AuthUser } from '@/lib/types'
-import { getPostLoginRedirect } from '@/lib/auth'
+import { getPostLoginRedirect } from '@/lib/auth-redirect'
 
 interface AuthContextType {
   user: AuthUser | null
@@ -55,6 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       if (res.ok) {
         setUser(data.user)
+        setLoading(false)
         return { success: true, redirectTo: getPostLoginRedirect(data.user.role) }
       }
       return { success: false, error: data.error }
@@ -93,6 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       if (res.ok) {
         setUser(data.user)
+        setLoading(false)
         return { success: true, redirectTo: getPostLoginRedirect(data.user.role) }
       }
       return { success: false, error: data.error }

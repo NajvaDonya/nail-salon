@@ -222,6 +222,7 @@ export async function POST(
         time: startDateTime.toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' }),
         staffName: `${appointment.staff.user.firstName} ${appointment.staff.user.lastName}`,
         services: appointment.services.map(s => s.service.name).join('، '),
+        customerName,
       })
     } catch (smsError) {
       console.error('Failed to send SMS:', smsError)

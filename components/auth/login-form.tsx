@@ -1,13 +1,14 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/contexts/auth-context'
-import { getPostLoginRedirect } from '@/lib/auth'
+import { getPostLoginRedirect } from '@/lib/auth-redirect'
 import { Scissors, Phone, Lock, ArrowLeft, User, Loader2, Eye, EyeOff } from 'lucide-react'
 
 type AuthMode = 'phone' | 'otp' | 'password' | 'register'
@@ -18,7 +19,8 @@ interface LoginFormProps {
 }
 
 export function LoginForm({ onSuccess, redirectTo }: LoginFormProps) {
-  const { login, loginWithOTP, requestOTP } = useAuth()
+  const router = useRouter()
+  const { login, loginWithOTP, requestOTP, refreshUser } = useAuth()
   const [mode, setMode] = useState<AuthMode>('phone')
   const [phone, setPhone] = useState('')
   const [password, setPassword] = useState('')
@@ -37,6 +39,11 @@ export function LoginForm({ onSuccess, redirectTo }: LoginFormProps) {
       return () => clearTimeout(timer)
     }
   }, [countdown])
+
+  const navigateAfterLogin = (destination: string) => {
+    onSuccess?.()
+    router.replace(destination)
+  }
 
   const handlePhoneSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -63,10 +70,10 @@ export function LoginForm({ onSuccess, redirectTo }: LoginFormProps) {
     const result = await loginWithOTP(phone, otp)
     
     if (result.success) {
-      onSuccess?.()
       const destination = result.redirectTo || redirectTo
       if (destination) {
-        window.location.href = destination
+        navigateAfterLogin(destination)
+        return
       }
     } else if (result.error?.includes('needsRegistration')) {
       setMode('register')
@@ -100,8 +107,9 @@ export function LoginForm({ onSuccess, redirectTo }: LoginFormProps) {
     
     if (res.ok) {
       const data = await res.json()
-      onSuccess?.()
-      window.location.href = getPostLoginRedirect(data.user.role)
+      await refreshUser()
+      navigateAfterLogin(getPostLoginRedirect(data.user.role))
+      return
     } else {
       const data = await res.json()
       setError(data.error || 'خطا در ثبت‌نام')
@@ -118,10 +126,10 @@ export function LoginForm({ onSuccess, redirectTo }: LoginFormProps) {
     const result = await login(phone, password)
     
     if (result.success) {
-      onSuccess?.()
       const destination = result.redirectTo || redirectTo
       if (destination) {
-        window.location.href = destination
+        navigateAfterLogin(destination)
+        return
       }
     } else {
       setError(result.error || 'خطا در ورود')

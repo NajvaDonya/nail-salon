@@ -4,21 +4,15 @@ import { SignJWT, jwtVerify } from 'jose'
 import { cookies } from 'next/headers'
 import type { NextResponse } from 'next/server'
 import type { JWTPayload, AuthUser, UserRole } from './types'
+import { AUTH_COOKIE_NAME, AUTH_COOKIE_OPTIONS } from './auth-cookie'
 
 const JWT_SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || 'your-secret-key-change-in-production'
 )
 
-export const AUTH_COOKIE_NAME = 'fair_session'
 const TOKEN_EXPIRY = '7d'
 
-export const AUTH_COOKIE_OPTIONS = {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'lax' as const,
-  maxAge: 60 * 60 * 24 * 7, // 7 days
-  path: '/',
-}
+export { AUTH_COOKIE_NAME, AUTH_COOKIE_OPTIONS }
 
 // Password hashing
 export async function hashPassword(password: string): Promise<string> {
@@ -141,16 +135,4 @@ export function isStaff(role: UserRole): boolean {
 
 export function isCustomer(role: UserRole): boolean {
   return role === 'CUSTOMER'
-}
-
-export function getPostLoginRedirect(role: UserRole): string {
-  switch (role) {
-    case 'MANAGER':
-    case 'SUPER_ADMIN':
-      return '/dashboard'
-    case 'STAFF':
-      return '/staff'
-    default:
-      return '/'
-  }
 }
