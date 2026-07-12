@@ -2,14 +2,23 @@
 import bcrypt from 'bcryptjs'
 import { SignJWT, jwtVerify } from 'jose'
 import { cookies } from 'next/headers'
+import type { NextResponse } from 'next/server'
 import type { JWTPayload, AuthUser, UserRole } from './types'
 
 const JWT_SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || 'your-secret-key-change-in-production'
 )
 
-const COOKIE_NAME = 'fair_session'
+export const AUTH_COOKIE_NAME = 'fair_session'
 const TOKEN_EXPIRY = '7d'
+
+export const AUTH_COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'lax' as const,
+  maxAge: 60 * 60 * 24 * 7, // 7 days
+  path: '/',
+}
 
 // Password hashing
 export async function hashPassword(password: string): Promise<string> {
@@ -39,25 +48,29 @@ export async function verifyToken(token: string): Promise<JWTPayload | null> {
 }
 
 // Cookie management
+export function setAuthCookieOnResponse(response: NextResponse, token: string): NextResponse {
+  response.cookies.set(AUTH_COOKIE_NAME, token, AUTH_COOKIE_OPTIONS)
+  return response
+}
+
+export function clearAuthCookieOnResponse(response: NextResponse): NextResponse {
+  response.cookies.delete(AUTH_COOKIE_NAME)
+  return response
+}
+
 export async function setAuthCookie(token: string): Promise<void> {
   const cookieStore = await cookies()
-  cookieStore.set(COOKIE_NAME, token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 60 * 60 * 24 * 7, // 7 days
-    path: '/',
-  })
+  cookieStore.set(AUTH_COOKIE_NAME, token, AUTH_COOKIE_OPTIONS)
 }
 
 export async function getAuthCookie(): Promise<string | null> {
   const cookieStore = await cookies()
-  return cookieStore.get(COOKIE_NAME)?.value || null
+  return cookieStore.get(AUTH_COOKIE_NAME)?.value || null
 }
 
 export async function removeAuthCookie(): Promise<void> {
   const cookieStore = await cookies()
-  cookieStore.delete(COOKIE_NAME)
+  cookieStore.delete(AUTH_COOKIE_NAME)
 }
 
 // Get current user from cookie
@@ -128,4 +141,16 @@ export function isStaff(role: UserRole): boolean {
 
 export function isCustomer(role: UserRole): boolean {
   return role === 'CUSTOMER'
+}
+
+export function getPostLoginRedirect(role: UserRole): string {
+  switch (role) {
+    case 'MANAGER':
+    case 'SUPER_ADMIN':
+      return '/dashboard'
+    case 'STAFF':
+      return '/staff'
+    default:
+      return '/'
+  }
 }

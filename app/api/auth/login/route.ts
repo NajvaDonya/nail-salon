@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { verifyPassword, createToken, setAuthCookie } from '@/lib/auth'
+import { verifyPassword, createToken, setAuthCookieOnResponse } from '@/lib/auth'
 
 export async function POST(request: Request) {
   try {
@@ -75,19 +75,19 @@ export async function POST(request: Request) {
       salonId: user.salonId || undefined,
     })
 
-    // Set cookie
-    await setAuthCookie(token)
-
     // Update last login
     await prisma.user.update({
       where: { id: user.id },
       data: { lastLoginAt: new Date() },
     })
 
-    // Remove passwordHash from response
     const { passwordHash: _, ...userWithoutPassword } = user
 
-    return NextResponse.json({ user: userWithoutPassword })
+    // Set cookie on response so it persists after redirect
+    const response = NextResponse.json({ user: userWithoutPassword })
+    setAuthCookieOnResponse(response, token)
+
+    return response
   } catch (error) {
     console.error('Login error:', error)
     return NextResponse.json(

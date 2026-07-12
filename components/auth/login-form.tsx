@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/contexts/auth-context'
+import { getPostLoginRedirect } from '@/lib/auth'
 import { Scissors, Phone, Lock, ArrowLeft, User, Loader2, Eye, EyeOff } from 'lucide-react'
 
 type AuthMode = 'phone' | 'otp' | 'password' | 'register'
@@ -63,8 +64,9 @@ export function LoginForm({ onSuccess, redirectTo }: LoginFormProps) {
     
     if (result.success) {
       onSuccess?.()
-      if (redirectTo) {
-        window.location.href = redirectTo
+      const destination = result.redirectTo || redirectTo
+      if (destination) {
+        window.location.href = destination
       }
     } else if (result.error?.includes('needsRegistration')) {
       setMode('register')
@@ -92,14 +94,14 @@ export function LoginForm({ onSuccess, redirectTo }: LoginFormProps) {
     const res = await fetch('/api/auth/otp/verify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ phone, code: otp, firstName, lastName }),
     })
     
     if (res.ok) {
+      const data = await res.json()
       onSuccess?.()
-      if (redirectTo) {
-        window.location.href = redirectTo
-      }
+      window.location.href = getPostLoginRedirect(data.user.role)
     } else {
       const data = await res.json()
       setError(data.error || 'خطا در ثبت‌نام')
@@ -117,8 +119,9 @@ export function LoginForm({ onSuccess, redirectTo }: LoginFormProps) {
     
     if (result.success) {
       onSuccess?.()
-      if (redirectTo) {
-        window.location.href = redirectTo
+      const destination = result.redirectTo || redirectTo
+      if (destination) {
+        window.location.href = destination
       }
     } else {
       setError(result.error || 'خطا در ورود')

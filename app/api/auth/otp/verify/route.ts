@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { createToken, setAuthCookie } from '@/lib/auth'
+import { createToken, setAuthCookieOnResponse } from '@/lib/auth'
 
 export async function POST(request: Request) {
   try {
@@ -114,16 +114,16 @@ export async function POST(request: Request) {
       salonId: user.salonId || undefined,
     })
 
-    // Set cookie
-    await setAuthCookie(token)
-
     // Update last login
     await prisma.user.update({
       where: { id: user.id },
       data: { lastLoginAt: new Date() },
     })
 
-    return NextResponse.json({ user })
+    const response = NextResponse.json({ user })
+    setAuthCookieOnResponse(response, token)
+
+    return response
   } catch (error) {
     console.error('OTP verify error:', error)
     return NextResponse.json(
