@@ -75,6 +75,7 @@ export async function POST(request: Request) {
           phone,
           firstName: firstName || 'کاربر',
           lastName: lastName || 'جدید',
+          name: `${firstName || 'کاربر'} ${lastName || 'جدید'}`.trim(),
           role: 'CUSTOMER',
         },
         select: {

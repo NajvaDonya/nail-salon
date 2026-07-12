@@ -142,6 +142,7 @@ export async function POST(
     const totalDuration = services.reduce((sum, s) => sum + s.duration, 0)
 
     // Parse start time and calculate end time
+    const appointmentDate = new Date(`${date.split('T')[0]}T00:00:00`)
     const startDateTime = new Date(`${date.split('T')[0]}T${startTime}`)
     const endDateTime = new Date(startDateTime.getTime() + totalDuration * 60000)
 
@@ -161,6 +162,7 @@ export async function POST(
           phone: customerPhone,
           firstName,
           lastName,
+          name: customerName.trim(),
           role: 'CUSTOMER',
         },
       })
@@ -175,6 +177,7 @@ export async function POST(
         salonId: salon.id,
         customerId: customer.id,
         staffId,
+        date: appointmentDate,
         startTime: startDateTime,
         endTime: endDateTime,
         totalPrice,

@@ -150,7 +150,8 @@ export async function POST(request: Request) {
           phone,
           firstName,
           lastName,
-          password: hashedPassword,
+          name: `${firstName} ${lastName}`.trim(),
+          passwordHash: hashedPassword,
           role: 'STAFF',
         },
       })

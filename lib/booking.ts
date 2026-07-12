@@ -32,6 +32,18 @@ function minutesToTime(minutes: number): string {
   return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`
 }
 
+function dateTimeFromParts(date: Date, time: string): Date {
+  const [year, month, day] = date.toISOString().split('T')[0].split('-').map(Number)
+  const [hours, minutes] = time.split(':').map(Number)
+  return new Date(year, month - 1, day, hours, minutes, 0, 0)
+}
+
+function timeFromDateTime(value: Date): string {
+  const hours = value.getHours().toString().padStart(2, '0')
+  const minutes = value.getMinutes().toString().padStart(2, '0')
+  return `${hours}:${minutes}`
+}
+
 // Check if a time slot conflicts with existing appointments
 async function hasConflict(
   staffId: string,
@@ -57,8 +69,8 @@ async function hasConflict(
   })
 
   for (const apt of appointments) {
-    const aptStart = timeToMinutes(apt.startTime)
-    const aptEnd = timeToMinutes(apt.endTime)
+    const aptStart = timeToMinutes(timeFromDateTime(apt.startTime))
+    const aptEnd = timeToMinutes(timeFromDateTime(apt.endTime))
 
     // Check for overlap
     if (startMinutes < aptEnd && endMinutes > aptStart) {
@@ -172,7 +184,9 @@ export async function getAvailableSlots(query: SlotQuery): Promise<AvailableSlot
         staff: {
           salonId,
           isActive: true,
-          role: { in: ['STAFF', 'MANAGER'] },
+          user: {
+            role: { in: ['STAFF', 'MANAGER'] },
+          },
         },
       },
       select: {
@@ -264,6 +278,9 @@ export async function bookAppointment(params: {
   }
 
   const endTime = minutesToTime(timeToMinutes(startTime) + service.duration)
+  const startDateTime = dateTimeFromParts(date, startTime)
+  const endDateTime = dateTimeFromParts(date, endTime)
+  const trackingCode = `SL${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).substring(2, 5).toUpperCase()}`
 
   // Check for conflicts one more time
   const hasConflictNow = await hasConflict(staffId, date, startTime, endTime)
@@ -277,21 +294,32 @@ export async function bookAppointment(params: {
       salonId,
       customerId,
       staffId,
-      serviceId,
       date,
-      startTime,
-      endTime,
-      price: service.discountPrice || service.price,
+      startTime: startDateTime,
+      endTime: endDateTime,
+      totalPrice: service.discountPrice || service.price,
+      trackingCode,
       notes,
       status: 'PENDING',
+      services: {
+        create: [{ serviceId }],
+      },
     },
     include: {
-      service: true,
+      services: {
+        include: {
+          service: true,
+        },
+      },
       staff: {
-        select: {
-          firstName: true,
-          lastName: true,
-          phone: true,
+        include: {
+          user: {
+            select: {
+              firstName: true,
+              lastName: true,
+              phone: true,
+            },
+          },
         },
       },
       customer: {

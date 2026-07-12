@@ -6,10 +6,27 @@ const prisma = new PrismaClient()
 async function main() {
   console.log('Seeding database...')
 
-  // Create a test salon
+  const managerPassword = await bcrypt.hash('manager123', 10)
+  const staffPassword = await bcrypt.hash('staff123', 10)
+
+  const manager = await prisma.user.upsert({
+    where: { phone: '09121111111' },
+    update: {},
+    create: {
+      phone: '09121111111',
+      name: 'مدیر سالن',
+      passwordHash: managerPassword,
+      role: 'MANAGER',
+      isActive: true,
+      email: 'admin@test.com',
+      firstName: 'Admin',
+      lastName: 'User',
+    },
+  })
+
   const salon = await prisma.salon.upsert({
     where: { slug: 'nail-art-studio' },
-    update: {},
+    update: { ownerId: manager.id },
     create: {
       name: 'استودیو ناخن هنری',
       slug: 'nail-art-studio',
@@ -17,61 +34,48 @@ async function main() {
       phone: '09121234567',
       address: 'تهران، خیابان ولیعصر',
       isActive: true,
+      ownerId: manager.id,
     },
+  })
+
+  await prisma.user.update({
+    where: { id: manager.id },
+    data: { salonId: salon.id },
   })
 
   console.log('Created salon:', salon.name)
 
-  // Create Manager user
-  const managerPassword = await bcrypt.hash('manager123', 10)
-  const manager = await prisma.user.upsert({
-    where: { phone: '09121111111' },
-    update: {},
-    create: {
-      phone: '09121111111',
-      name: 'مدیر سالن',
-      passwordHash: managerPassword, // fixed: was 'password', field is now 'passwordHash'
-      role: 'MANAGER',
-      salonId: salon.id,
-      isActive: true,
-      email: 'admin@test.com',
-      firstName: 'Admin',
-      lastName: 'User',
-      avatar: null,
-    },
-  })
-
-  console.log('Created manager:', manager.name, '- Phone: 09121111111, Password: manager123')
-
-  // Create Nail Artist (Staff) user
-  const staffPassword = await bcrypt.hash('staff123', 10)
-  const staff = await prisma.user.upsert({
+  const staffUser = await prisma.user.upsert({
     where: { phone: '09122222222' },
     update: {},
     create: {
       phone: '09122222222',
       name: 'طراح ناخن',
-      passwordHash: staffPassword, // fixed: was 'password', field is now 'passwordHash'
+      passwordHash: staffPassword,
       role: 'STAFF',
       salonId: salon.id,
+      isActive: true,
+      firstName: 'Sara',
+      lastName: 'Designer',
+    },
+  })
+
+  const staff = await prisma.staff.upsert({
+    where: {
+      userId_salonId: { userId: staffUser.id, salonId: salon.id },
+    },
+    update: {},
+    create: {
+      userId: staffUser.id,
+      salonId: salon.id,
+      specialties: ['طراحی ناخن', 'مانیکور', 'پدیکور'],
       isActive: true,
     },
   })
 
-  console.log('Created staff:', staff.name, '- Phone: 09122222222, Password: staff123')
+  console.log('Created manager:', manager.name, '- Phone: 09121111111, Password: manager123')
+  console.log('Created staff:', staffUser.name, '- Phone: 09122222222, Password: staff123')
 
-  // Create staff profile for the nail artist
-  await prisma.staffProfile.upsert({
-    where: { userId: staff.id },
-    update: {},
-    create: {
-      userId: staff.id,
-      bio: 'متخصص طراحی ناخن با ۵ سال سابقه',
-      specialties: ['طراحی ناخن', 'مانیکور', 'پدیکور'],
-    },
-  })
-
-  // Create sample services
   const services = [
     { name: 'مانیکور ساده', duration: 30, price: 150000, category: 'مانیکور' },
     { name: 'پدیکور ساده', duration: 45, price: 200000, category: 'پدیکور' },
@@ -99,11 +103,24 @@ async function main() {
 
   console.log('Created', services.length, 'services')
 
-  // Create working hours for the staff (Saturday to Thursday, 9 AM to 6 PM)
   const days = ['SATURDAY', 'SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY']
 
   for (const day of days) {
-    await prisma.workingHours.upsert({
+    await prisma.workingHour.upsert({
+      where: {
+        salonId_dayOfWeek: { salonId: salon.id, dayOfWeek: day },
+      },
+      update: {},
+      create: {
+        salonId: salon.id,
+        dayOfWeek: day,
+        openTime: '09:00',
+        closeTime: '18:00',
+        isClosed: false,
+      },
+    })
+
+    await prisma.staffWorkingHour.upsert({
       where: {
         staffId_dayOfWeek: { staffId: staff.id, dayOfWeek: day },
       },
@@ -113,14 +130,13 @@ async function main() {
         dayOfWeek: day,
         startTime: '09:00',
         endTime: '18:00',
-        isActive: true,
+        isOff: false,
       },
     })
   }
 
-  console.log('Created working hours for staff')
+  console.log('Created salon and staff working hours')
 
-  // Link staff to all services
   const allServices = await prisma.service.findMany({ where: { salonId: salon.id } })
   for (const service of allServices) {
     await prisma.staffService.upsert({
