@@ -1,5 +1,5 @@
 // Jalali (Persian) calendar utilities
-import { format, parse, addDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isToday } from 'date-fns-jalali'
+import { format, parse, addDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isToday, isSameMonth, subMonths, addMonths } from 'date-fns-jalali'
 import { faIR } from 'date-fns-jalali/locale'
 
 // Format date to Persian
@@ -82,6 +82,10 @@ export function formatPersianDuration(minutes: number): string {
   return `${englishToPersian(hours.toString())} ساعت و ${englishToPersian(mins.toString())} دقیقه`
 }
 
+export function formatServiceWithDuration(name: string, durationMinutes: number): string {
+  return `${name} (${formatPersianDuration(durationMinutes)})`
+}
+
 // Aliases used by booking components
 export const formatJalaliDate = formatPersianDate
 export const formatJalaliTime = formatPersianTime
@@ -89,4 +93,33 @@ export const convertPersianToEnglishDigits = persianToEnglish
 
 export function getJalaliWeekDays(): string[] {
   return ['یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنج‌شنبه', 'جمعه', 'شنبه']
+}
+
+export const PERSIAN_CALENDAR_WEEKDAYS = ['شنبه', 'یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنج‌شنبه', 'جمعه']
+
+export function getPersianCalendarGrid(viewDate: Date): Date[] {
+  const monthStart = startOfMonth(viewDate)
+  const monthEnd = endOfMonth(viewDate)
+  const gridStart = startOfWeek(monthStart, { locale: faIR })
+  const gridEnd = endOfWeek(monthEnd, { locale: faIR })
+  return eachDayOfInterval({ start: gridStart, end: gridEnd })
+}
+
+export function getPreviousMonth(date: Date): Date {
+  return subMonths(date, 1)
+}
+
+export function getNextMonth(date: Date): Date {
+  return addMonths(date, 1)
+}
+
+export function isSamePersianMonth(a: Date, b: Date): boolean {
+  return isSameMonth(a, b)
+}
+
+export function toDateKey(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }

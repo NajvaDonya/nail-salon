@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { sendAppointmentConfirmation } from '@/lib/sms'
+import { assertSlotHold, releaseHoldsByToken, SlotHoldError } from '@/lib/slot-hold'
 import { z } from 'zod'
 
 const createAppointmentSchema = z.object({
@@ -11,6 +12,7 @@ const createAppointmentSchema = z.object({
   customerPhone: z.string().min(10),
   customerName: z.string().min(2),
   notes: z.string().optional(),
+  holdToken: z.string().optional(),
 })
 
 export async function GET(
@@ -118,7 +120,8 @@ export async function POST(
       )
     }
 
-    const { serviceIds, staffId, date, startTime, customerPhone, customerName, notes } = validation.data
+    const { serviceIds, staffId, date, startTime, customerPhone, customerName, notes, holdToken } =
+      validation.data
 
     const salon = await prisma.salon.findUnique({
       where: { slug },
@@ -145,6 +148,37 @@ export async function POST(
     const appointmentDate = new Date(`${date.split('T')[0]}T00:00:00`)
     const startDateTime = new Date(`${date.split('T')[0]}T${startTime}`)
     const endDateTime = new Date(startDateTime.getTime() + totalDuration * 60000)
+
+    try {
+      await assertSlotHold({
+        staffId,
+        date: date.split('T')[0],
+        startTime,
+        durationMinutes: totalDuration,
+        holdToken,
+      })
+    } catch (error) {
+      if (error instanceof SlotHoldError) {
+        return NextResponse.json({ error: error.message }, { status: 409 })
+      }
+      throw error
+    }
+
+    const conflict = await prisma.appointment.findFirst({
+      where: {
+        staffId,
+        status: { notIn: ['CANCELLED', 'NO_SHOW'] },
+        startTime: { lt: endDateTime },
+        endTime: { gt: startDateTime },
+      },
+    })
+
+    if (conflict) {
+      return NextResponse.json(
+        { error: 'این پرسنل در این زمان نوبت دیگری دارد' },
+        { status: 409 }
+      )
+    }
 
     // Find or create customer
     let customer = await prisma.user.findFirst({
@@ -212,6 +246,10 @@ export async function POST(
         },
       },
     })
+
+    if (holdToken) {
+      await releaseHoldsByToken(holdToken)
+    }
 
     // Send SMS confirmation
     try {

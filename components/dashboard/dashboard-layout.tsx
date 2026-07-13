@@ -37,7 +37,7 @@ const managerNavItems = [
   { href: '/dashboard/appointments', label: 'نوبت‌ها', icon: Calendar },
   { href: '/dashboard/staff', label: 'پرسنل', icon: Users },
   { href: '/dashboard/services', label: 'خدمات', icon: Scissors },
-  { href: '/dashboard/schedule', label: 'برنامه کاری', icon: Clock },
+  { href: '/dashboard/schedule', label: 'ساعات سالن', icon: Clock },
   { href: '/dashboard/reviews', label: 'نظرات', icon: Star },
   { href: '/dashboard/analytics', label: 'گزارشات', icon: BarChart3 },
   { href: '/dashboard/settings', label: 'تنظیمات', icon: Settings },

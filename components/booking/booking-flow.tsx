@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -19,7 +19,8 @@ import {
   Star,
   Phone
 } from 'lucide-react'
-import { formatJalaliDate, formatJalaliTime, getJalaliWeekDays, convertPersianToEnglishDigits } from '@/lib/jalali'
+import { formatJalaliDate, formatJalaliTime, getJalaliWeekDays, convertPersianToEnglishDigits, toDateKey } from '@/lib/jalali'
+import { getHoldToken, releaseHoldToken } from '@/lib/hold-token'
 import useSWR from 'swr'
 
 interface Service {
@@ -69,12 +70,19 @@ export function BookingFlow({ salonSlug }: { salonSlug: string }) {
   const [customerNotes, setCustomerNotes] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [bookingSuccess, setBookingSuccess] = useState(false)
+  const [slotHoldError, setSlotHoldError] = useState('')
+
+  const holdToken = useMemo(() => getHoldToken(), [])
+  const holdApiUrl = `/api/salons/${salonSlug}/slots/hold`
 
   // Fetch services
   const { data: servicesData } = useSWR<{ services: Service[] }>(
     `/api/salons/${salonSlug}/services`,
     fetcher
   )
+
+  const totalPrice = selectedServices.reduce((sum, s) => sum + s.price, 0)
+  const totalDuration = selectedServices.reduce((sum, s) => sum + s.duration, 0)
 
   // Fetch staff based on selected services
   const { data: staffData } = useSWR<{ staff: Staff[] }>(
@@ -84,20 +92,78 @@ export function BookingFlow({ salonSlug }: { salonSlug: string }) {
     fetcher
   )
 
-  // Fetch available slots
-  const { data: slotsData } = useSWR<{ slots: TimeSlot[] }>(
-    selectedStaff && selectedDate
-      ? `/api/salons/${salonSlug}/slots?staffId=${selectedStaff.id}&date=${selectedDate.toISOString()}&duration=${totalDuration}`
-      : null,
-    fetcher
+  const slotsUrl =
+    selectedStaff && selectedDate && selectedServices.length > 0
+      ? `/api/salons/${salonSlug}/slots?staffId=${selectedStaff.id}&date=${toDateKey(selectedDate)}&serviceIds=${selectedServices.map((s) => s.id).join(',')}&holdToken=${holdToken}`
+      : null
+
+  const { data: slotsData, isLoading: slotsLoading, mutate: refreshSlots } = useSWR<{ slots: TimeSlot[] }>(
+    slotsUrl,
+    fetcher,
+    { refreshInterval: currentStep === 4 ? 5000 : 0 }
   )
 
   const services = servicesData?.services || []
   const staff = staffData?.staff || []
   const slots = slotsData?.slots || []
 
-  const totalPrice = selectedServices.reduce((sum, s) => sum + s.price, 0)
-  const totalDuration = selectedServices.reduce((sum, s) => sum + s.duration, 0)
+  useEffect(() => {
+    setSelectedSlot(null)
+    setSlotHoldError('')
+  }, [selectedStaff?.id, selectedDate?.toDateString(), selectedServices.map((s) => s.id).join(',')])
+
+  useEffect(() => {
+    if (!selectedSlot || !selectedStaff || !selectedDate || selectedServices.length === 0) return
+
+    let cancelled = false
+
+    const reserveSlot = async () => {
+      setSlotHoldError('')
+      try {
+        const res = await fetch(holdApiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            holdToken,
+            staffId: selectedStaff.id,
+            date: toDateKey(selectedDate),
+            startTime: selectedSlot.start,
+            serviceIds: selectedServices.map((s) => s.id),
+          }),
+        })
+
+        if (cancelled) return
+
+        if (!res.ok) {
+          const data = await res.json()
+          setSlotHoldError(data.error || 'این زمان دیگر در دسترس نیست')
+          setSelectedSlot(null)
+          await refreshSlots()
+        }
+      } catch {
+        if (!cancelled) {
+          setSlotHoldError('خطا در رزرو موقت زمان')
+        }
+      }
+    }
+
+    reserveSlot()
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedSlot?.start, selectedStaff?.id, selectedDate, holdToken, holdApiUrl, selectedServices, refreshSlots])
+
+  useEffect(() => {
+    if (selectedSlot || !holdToken) return
+    void releaseHoldToken(holdToken, holdApiUrl)
+  }, [selectedSlot, holdToken, holdApiUrl])
+
+  useEffect(() => {
+    return () => {
+      void releaseHoldToken(holdToken, holdApiUrl)
+    }
+  }, [holdToken, holdApiUrl])
 
   const toggleService = (service: Service) => {
     setSelectedServices(prev => {
@@ -139,11 +205,12 @@ export function BookingFlow({ salonSlug }: { salonSlug: string }) {
         body: JSON.stringify({
           serviceIds: selectedServices.map(s => s.id),
           staffId: selectedStaff?.id,
-          date: selectedDate?.toISOString(),
+          date: selectedDate ? toDateKey(selectedDate) : undefined,
           startTime: selectedSlot?.start,
           customerPhone: convertPersianToEnglishDigits(customerPhone),
           customerName,
           notes: customerNotes,
+          holdToken,
         }),
       })
 
@@ -325,7 +392,10 @@ export function BookingFlow({ salonSlug }: { salonSlug: string }) {
                         ? 'ring-2 ring-primary bg-primary/5'
                         : ''
                     }`}
-                    onClick={() => setSelectedStaff(member)}
+                    onClick={() => {
+                      setSelectedStaff(member)
+                      setSelectedSlot(null)
+                    }}
                   >
                     <CardContent className="p-4 text-center">
                       <div className="w-20 h-20 rounded-full bg-muted mx-auto mb-3 flex items-center justify-center overflow-hidden">
@@ -381,7 +451,10 @@ export function BookingFlow({ salonSlug }: { salonSlug: string }) {
                       className={`cursor-pointer transition-all hover:shadow-md ${
                         isSelected ? 'ring-2 ring-primary bg-primary/5' : ''
                       }`}
-                      onClick={() => setSelectedDate(date)}
+                      onClick={() => {
+                        setSelectedDate(date)
+                        setSelectedSlot(null)
+                      }}
                     >
                       <CardContent className="p-3 text-center">
                         <div className="text-xs text-muted-foreground mb-1">
@@ -406,16 +479,26 @@ export function BookingFlow({ salonSlug }: { salonSlug: string }) {
             <div>
               <h2 className="text-xl font-bold mb-6">
                 ساعت مورد نظر را انتخاب کنید
-                {selectedDate && (
+                {selectedStaff && (
                   <span className="text-base font-normal text-muted-foreground mr-2">
-                    ({formatJalaliDate(selectedDate, 'dddd D MMMM')})
+                    ({selectedStaff.user.firstName} {selectedStaff.user.lastName}
+                    {selectedDate && ` — ${formatJalaliDate(selectedDate, 'dddd D MMMM')}`})
                   </span>
                 )}
               </h2>
-              {slots.length === 0 ? (
+              {slotsLoading ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Clock className="w-12 h-12 mx-auto mb-4 opacity-50 animate-pulse" />
+                  <p>در حال بارگذاری زمان‌های خالی...</p>
+                </div>
+              ) : slots.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">
                   <Clock className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p>متاسفانه در این روز زمان خالی وجود ندارد.</p>
+                  <p>
+                    {selectedStaff
+                      ? `متاسفانه ${selectedStaff.user.firstName} ${selectedStaff.user.lastName} در این روز زمان خالی ندارد.`
+                      : 'متاسفانه در این روز زمان خالی وجود ندارد.'}
+                  </p>
                   <Button variant="outline" className="mt-4" onClick={prevStep}>
                     انتخاب روز دیگر
                   </Button>
@@ -434,6 +517,9 @@ export function BookingFlow({ salonSlug }: { salonSlug: string }) {
                     </Button>
                   ))}
                 </div>
+              )}
+              {slotHoldError && (
+                <p className="text-sm text-destructive text-center mt-4">{slotHoldError}</p>
               )}
             </div>
           )}

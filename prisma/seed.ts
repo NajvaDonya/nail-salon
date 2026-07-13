@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
+import { buildDefaultCategories } from '../lib/salon'
 
 const prisma = new PrismaClient()
 
@@ -7,7 +8,6 @@ async function main() {
   console.log('Seeding database...')
 
   const managerPassword = await bcrypt.hash('manager123', 10)
-  const staffPassword = await bcrypt.hash('staff123', 10)
 
   const manager = await prisma.user.upsert({
     where: { phone: '09121111111' },
@@ -44,64 +44,20 @@ async function main() {
   })
 
   console.log('Created salon:', salon.name)
-
-  const staffUser = await prisma.user.upsert({
-    where: { phone: '09122222222' },
-    update: {},
-    create: {
-      phone: '09122222222',
-      name: 'طراح ناخن',
-      passwordHash: staffPassword,
-      role: 'STAFF',
-      salonId: salon.id,
-      isActive: true,
-      firstName: 'Sara',
-      lastName: 'Designer',
-    },
-  })
-
-  const staff = await prisma.staff.upsert({
-    where: {
-      userId_salonId: { userId: staffUser.id, salonId: salon.id },
-    },
-    update: {},
-    create: {
-      userId: staffUser.id,
-      salonId: salon.id,
-      specialties: ['طراحی ناخن', 'مانیکور', 'پدیکور'],
-      isActive: true,
-    },
-  })
-
   console.log('Created manager:', manager.name, '- Phone: 09121111111, Password: manager123')
-  console.log('Created staff:', staffUser.name, '- Phone: 09122222222, Password: staff123')
 
-  const services = [
-    { name: 'مانیکور ساده', duration: 30, price: 150000, category: 'مانیکور' },
-    { name: 'پدیکور ساده', duration: 45, price: 200000, category: 'پدیکور' },
-    { name: 'طراحی ناخن', duration: 60, price: 300000, category: 'طراحی' },
-    { name: 'کاشت ناخن ژل', duration: 90, price: 500000, category: 'کاشت' },
-    { name: 'لاک ژل', duration: 45, price: 250000, category: 'لاک' },
-  ]
+  const categoryNames = buildDefaultCategories()
 
-  for (const service of services) {
-    await prisma.service.upsert({
-      where: {
-        salonId_name: { salonId: salon.id, name: service.name },
+  await prisma.salon.update({
+    where: { id: salon.id },
+    data: {
+      settings: {
+        serviceCategories: categoryNames,
       },
-      update: {},
-      create: {
-        salonId: salon.id,
-        name: service.name,
-        duration: service.duration,
-        price: service.price,
-        category: service.category,
-        isActive: true,
-      },
-    })
-  }
+    },
+  })
 
-  console.log('Created', services.length, 'services')
+  console.log('Created default categories')
 
   const days = ['SATURDAY', 'SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY']
 
@@ -119,41 +75,9 @@ async function main() {
         isClosed: false,
       },
     })
-
-    await prisma.staffWorkingHour.upsert({
-      where: {
-        staffId_dayOfWeek: { staffId: staff.id, dayOfWeek: day },
-      },
-      update: {},
-      create: {
-        staffId: staff.id,
-        dayOfWeek: day,
-        startTime: '09:00',
-        endTime: '18:00',
-        isOff: false,
-      },
-    })
   }
 
-  console.log('Created salon and staff working hours')
-
-  const allServices = await prisma.service.findMany({ where: { salonId: salon.id } })
-  for (const service of allServices) {
-    await prisma.staffService.upsert({
-      where: {
-        staffId_serviceId: { staffId: staff.id, serviceId: service.id },
-      },
-      update: {},
-      create: {
-        staffId: staff.id,
-        serviceId: service.id,
-      },
-    })
-  }
-
-  console.log('Linked staff to all services')
-
-  console.log('\n========================================')
+  console.log('Created salon working hours')
   console.log('Seed completed successfully!')
   console.log('========================================')
   console.log('\nTest Credentials:')
@@ -161,10 +85,6 @@ async function main() {
   console.log('MANAGER:')
   console.log('  Phone: 09121111111')
   console.log('  Password: manager123')
-  console.log('----------------------------------------')
-  console.log('NAIL ARTIST (Staff):')
-  console.log('  Phone: 09122222222')
-  console.log('  Password: staff123')
   console.log('----------------------------------------')
   console.log('\nSalon URL: /salon/nail-art-studio/book')
   console.log('========================================\n')

@@ -15,12 +15,11 @@ const updateSettingsSchema = z.object({
     close: z.string(),
     isOpen: z.boolean(),
   })).optional(),
-  settings: z.object({
+    settings: z.object({
     allowOnlineBooking: z.boolean().optional(),
     requireConfirmation: z.boolean().optional(),
     sendReminders: z.boolean().optional(),
     reminderHours: z.number().optional(),
-    bufferTime: z.number().optional(),
   }).optional(),
 })
 

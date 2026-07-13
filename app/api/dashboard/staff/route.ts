@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { getCurrentUser } from '@/lib/auth'
+import { getCurrentUser, isManager } from '@/lib/auth'
+import { getManagerSalonId, validateStaffSpecialties } from '@/lib/salon'
 import { z } from 'zod'
 import bcrypt from 'bcryptjs'
 
@@ -9,35 +10,43 @@ const createStaffSchema = z.object({
   firstName: z.string().min(2),
   lastName: z.string().min(2),
   password: z.string().min(6).optional(),
-  specialties: z.array(z.string()).optional(),
+  specialties: z.array(z.string()).min(1, 'حداقل یک تخصص باید انتخاب شود'),
   serviceIds: z.array(z.string()).optional(),
 })
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const user = await getCurrentUser()
     
-    if (!user || user.role !== 'MANAGER') {
+    if (!user || !isManager(user.role)) {
       return NextResponse.json(
         { error: 'دسترسی غیرمجاز' },
         { status: 403 }
       )
     }
 
-    const salon = await prisma.salon.findFirst({
-      where: { ownerId: user.id },
-      select: { id: true },
-    })
+    const salonId = await getManagerSalonId(user.id, user.salonId)
 
-    if (!salon) {
+    if (!salonId) {
       return NextResponse.json(
         { error: 'سالن یافت نشد' },
         { status: 404 }
       )
     }
 
+    const url = new URL(request.url)
+    const activeOnly = url.searchParams.get('activeOnly') === 'true'
+
     const staff = await prisma.staff.findMany({
-      where: { salonId: salon.id },
+      where: {
+        salonId,
+        ...(activeOnly
+          ? {
+              isActive: true,
+              user: { isActive: true },
+            }
+          : {}),
+      },
       include: {
         user: {
           select: {
@@ -46,6 +55,7 @@ export async function GET() {
             firstName: true,
             lastName: true,
             avatar: true,
+            isActive: true,
           },
         },
         services: {
@@ -70,7 +80,7 @@ export async function GET() {
       user: member.user,
       specialties: member.specialties,
       services: member.services.map(s => s.service),
-      isActive: member.isActive,
+      isActive: member.isActive && member.user.isActive,
       appointmentCount: member._count.appointments,
       averageRating: member.reviews.length > 0
         ? member.reviews.reduce((sum, r) => sum + r.rating, 0) / member.reviews.length
@@ -93,19 +103,16 @@ export async function POST(request: Request) {
   try {
     const user = await getCurrentUser()
     
-    if (!user || user.role !== 'MANAGER') {
+    if (!user || !isManager(user.role)) {
       return NextResponse.json(
         { error: 'دسترسی غیرمجاز' },
         { status: 403 }
       )
     }
 
-    const salon = await prisma.salon.findFirst({
-      where: { ownerId: user.id },
-      select: { id: true },
-    })
+    const salonId = await getManagerSalonId(user.id, user.salonId)
 
-    if (!salon) {
+    if (!salonId) {
       return NextResponse.json(
         { error: 'سالن یافت نشد' },
         { status: 404 }
@@ -124,15 +131,27 @@ export async function POST(request: Request) {
 
     const { phone, firstName, lastName, password, specialties, serviceIds } = validation.data
 
-    // Check if user already exists
-    let staffUser = await prisma.user.findFirst({
+    const specialtyValidation = await validateStaffSpecialties(salonId, specialties)
+    if ('error' in specialtyValidation) {
+      return NextResponse.json({ error: specialtyValidation.error }, { status: 400 })
+    }
+
+    const validatedSpecialties = specialtyValidation.valid
+
+    let staffUser = await prisma.user.findUnique({
       where: { phone },
     })
 
     if (staffUser) {
-      // Check if already staff at this salon
+      if (staffUser.role === 'MANAGER' || staffUser.role === 'SUPER_ADMIN') {
+        return NextResponse.json(
+          { error: 'نمی‌توانید مدیر را به عنوان پرسنل اضافه کنید' },
+          { status: 400 }
+        )
+      }
+
       const existingStaff = await prisma.staff.findFirst({
-        where: { userId: staffUser.id, salonId: salon.id },
+        where: { userId: staffUser.id, salonId },
       })
 
       if (existingStaff) {
@@ -141,9 +160,25 @@ export async function POST(request: Request) {
           { status: 400 }
         )
       }
+
+      staffUser = await prisma.user.update({
+        where: { id: staffUser.id },
+        data: {
+          firstName,
+          lastName,
+          name: `${firstName} ${lastName}`.trim(),
+          role: 'STAFF',
+          salonId,
+          ...(password ? { passwordHash: await bcrypt.hash(password, 10) } : {}),
+        },
+      })
     } else {
-      // Create new user
-      const hashedPassword = password ? await bcrypt.hash(password, 10) : null
+      if (!password) {
+        return NextResponse.json(
+          { error: 'رمز عبور برای پرسنل جدید الزامی است' },
+          { status: 400 }
+        )
+      }
 
       staffUser = await prisma.user.create({
         data: {
@@ -151,8 +186,9 @@ export async function POST(request: Request) {
           firstName,
           lastName,
           name: `${firstName} ${lastName}`.trim(),
-          passwordHash: hashedPassword,
+          passwordHash: await bcrypt.hash(password, 10),
           role: 'STAFF',
+          salonId,
         },
       })
     }
@@ -161,8 +197,8 @@ export async function POST(request: Request) {
     const staff = await prisma.staff.create({
       data: {
         userId: staffUser.id,
-        salonId: salon.id,
-        specialties: specialties || [],
+        salonId,
+        specialties: validatedSpecialties,
         services: serviceIds && serviceIds.length > 0 ? {
           create: serviceIds.map(serviceId => ({ serviceId })),
         } : undefined,

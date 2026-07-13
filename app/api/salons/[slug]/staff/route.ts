@@ -26,6 +26,7 @@ export async function GET(
     const whereClause: Record<string, unknown> = {
       salonId: salon.id,
       isActive: true,
+      user: { isActive: true },
     }
 
     if (serviceIds.length > 0) {

@@ -38,7 +38,6 @@ interface SalonSettings {
     requireConfirmation: boolean
     sendReminders: boolean
     reminderHours: number
-    bufferTime: number
   }
 }
 
@@ -367,21 +366,6 @@ export default function SettingsPage() {
                     />
                   </div>
                 )}
-
-                <div className="space-y-2">
-                  <Label>زمان استراحت بین نوبت‌ها (دقیقه)</Label>
-                  <Input
-                    type="number"
-                    value={settings.bufferTime || 0}
-                    onChange={(e) => updateSettings('bufferTime', parseInt(e.target.value))}
-                    min={0}
-                    max={60}
-                    className="w-32"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    این زمان بین هر نوبت اضافه می‌شود
-                  </p>
-                </div>
               </CardContent>
             </Card>
           </motion.div>

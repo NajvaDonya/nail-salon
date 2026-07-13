@@ -2,6 +2,11 @@
 
 import { prisma } from './db'
 import type { DayOfWeek, TimeSlot, AvailableSlot } from './types'
+import { getActiveHolds, slotBlockedByHold } from './slot-hold'
+import { getStaffBreakSettings, type LunchWindow } from './staff-breaks'
+import { timeToMinutes, minutesToTime, calculateEndTime } from './time-utils'
+
+export { timeToMinutes, minutesToTime, calculateEndTime }
 
 interface SlotQuery {
   salonId: string
@@ -19,17 +24,20 @@ function getDayOfWeek(date: Date): DayOfWeek {
   return days[date.getDay()]
 }
 
-// Parse time string to minutes from midnight
-function timeToMinutes(time: string): number {
-  const [hours, minutes] = time.split(':').map(Number)
-  return hours * 60 + minutes
+// Parse time string to minutes from midnight — see lib/time-utils.ts
+function timesOverlapMinutes(startA: number, endA: number, startB: number, endB: number): boolean {
+  return startA < endB && endA > startB
 }
 
-// Convert minutes to time string
-function minutesToTime(minutes: number): string {
-  const hours = Math.floor(minutes / 60)
-  const mins = minutes % 60
-  return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`
+export function timesToSlotRanges(
+  times: string[],
+  durationMinutes: number
+): Array<{ start: string; end: string; available: boolean }> {
+  return times.map((start) => ({
+    start,
+    end: minutesToTime(timeToMinutes(start) + durationMinutes),
+    available: true,
+  }))
 }
 
 function dateTimeFromParts(date: Date, time: string): Date {
@@ -44,18 +52,28 @@ function timeFromDateTime(value: Date): string {
   return `${hours}:${minutes}`
 }
 
+function formatTimeValue(value: string | Date): string {
+  if (value instanceof Date) {
+    return timeFromDateTime(value)
+  }
+  return value.slice(0, 5)
+}
+
 // Check if a time slot conflicts with existing appointments
 async function hasConflict(
   staffId: string,
   date: Date,
   startTime: string,
-  endTime: string
+  endTime: string,
+  restMinutes: number,
+  excludeAppointmentId?: string
 ): Promise<boolean> {
   const startMinutes = timeToMinutes(startTime)
   const endMinutes = timeToMinutes(endTime)
 
   const appointments = await prisma.appointment.findMany({
     where: {
+      ...(excludeAppointmentId ? { id: { not: excludeAppointmentId } } : {}),
       staffId,
       date,
       status: {
@@ -71,14 +89,27 @@ async function hasConflict(
   for (const apt of appointments) {
     const aptStart = timeToMinutes(timeFromDateTime(apt.startTime))
     const aptEnd = timeToMinutes(timeFromDateTime(apt.endTime))
+    const blockedEnd = aptEnd + restMinutes
 
-    // Check for overlap
-    if (startMinutes < aptEnd && endMinutes > aptStart) {
+    if (timesOverlapMinutes(startMinutes, endMinutes, aptStart, blockedEnd)) {
       return true
     }
   }
 
   return false
+}
+
+function overlapsLunch(
+  startTime: string,
+  endTime: string,
+  lunch: LunchWindow | null
+): boolean {
+  if (!lunch) return false
+  const start = timeToMinutes(startTime)
+  const end = timeToMinutes(endTime)
+  const lunchStart = timeToMinutes(lunch.start)
+  const lunchEnd = timeToMinutes(lunch.end)
+  return timesOverlapMinutes(start, end, lunchStart, lunchEnd)
 }
 
 // Get available slots for a specific staff member on a date
@@ -87,7 +118,11 @@ async function getStaffSlots(
   salonId: string,
   date: Date,
   serviceDuration: number,
-  bufferTime: number
+  restMinutes: number,
+  lunch: LunchWindow | null,
+  excludeAppointmentId?: string,
+  excludeHoldToken?: string,
+  options?: { forLunch?: boolean; lunchDuration?: number }
 ): Promise<TimeSlot[]> {
   const dayOfWeek = getDayOfWeek(date)
   const dateStr = date.toISOString().split('T')[0]
@@ -129,30 +164,128 @@ async function getStaffSlots(
   if (staffHours?.isOff) return []
 
   // Determine effective working hours
-  const openTime = staffHours?.startTime || salonHours.openTime
-  const closeTime = staffHours?.endTime || salonHours.closeTime
+  const openTime = formatTimeValue(staffHours?.startTime || salonHours.openTime)
+  const closeTime = formatTimeValue(staffHours?.endTime || salonHours.closeTime)
 
   const openMinutes = timeToMinutes(openTime)
   const closeMinutes = timeToMinutes(closeTime)
-  const slotDuration = serviceDuration + bufferTime
+
+  const activeHolds = await getActiveHolds({
+    staffId,
+    date,
+    excludeHoldToken,
+  })
+
+  const appointments = await prisma.appointment.findMany({
+    where: {
+      ...(excludeAppointmentId ? { id: { not: excludeAppointmentId } } : {}),
+      staffId,
+      date,
+      status: { in: ['PENDING', 'CONFIRMED', 'IN_PROGRESS'] },
+    },
+    select: { startTime: true, endTime: true },
+  })
 
   const slots: TimeSlot[] = []
+  const duration = options?.forLunch ? (options.lunchDuration ?? serviceDuration) : serviceDuration
+  const candidateStarts = new Set<number>()
 
-  // Generate 30-minute interval slots
-  for (let time = openMinutes; time + serviceDuration <= closeMinutes; time += 30) {
+  let walk = openMinutes
+  while (walk + duration <= closeMinutes) {
+    candidateStarts.add(walk)
+    walk += duration + restMinutes
+  }
+
+  for (const apt of appointments) {
+    const afterRest = timeToMinutes(timeFromDateTime(apt.endTime)) + restMinutes
+    if (afterRest + duration <= closeMinutes) {
+      candidateStarts.add(afterRest)
+    }
+  }
+
+  const sortedStarts = Array.from(candidateStarts).sort((a, b) => a - b)
+
+  for (const time of sortedStarts) {
     const startTime = minutesToTime(time)
-    const endTime = minutesToTime(time + serviceDuration)
+    const endTime = minutesToTime(time + duration)
 
-    const conflict = await hasConflict(staffId, date, startTime, endTime)
+    const lunchConflict =
+      !options?.forLunch && overlapsLunch(startTime, endTime, lunch)
+
+    const conflict = await hasConflict(
+      staffId,
+      date,
+      startTime,
+      endTime,
+      restMinutes,
+      excludeAppointmentId
+    )
+    const held = slotBlockedByHold(startTime, endTime, activeHolds)
 
     slots.push({
       time: startTime,
-      available: !conflict,
+      available: !conflict && !held && !lunchConflict,
       staffId,
     })
   }
 
   return slots
+}
+
+export async function getStaffAvailableTimes(params: {
+  staffId: string
+  salonId: string
+  date: string
+  durationMinutes: number
+  excludeAppointmentId?: string
+  excludeHoldToken?: string
+  availableOnly?: boolean
+  kind?: 'SERVICE' | 'LUNCH'
+}): Promise<string[]> {
+  const {
+    staffId,
+    salonId,
+    durationMinutes,
+    excludeAppointmentId,
+    excludeHoldToken,
+    availableOnly = true,
+    kind = 'SERVICE',
+  } = params
+
+  const dateKey = params.date.split('T')[0]
+  const [year, month, day] = dateKey.split('-').map(Number)
+  const appointmentDate = new Date(year, month - 1, day)
+
+  const breakSettings = await getStaffBreakSettings(staffId, salonId)
+  const forLunch = kind === 'LUNCH'
+  const lunchDuration =
+    forLunch && breakSettings.lunch ? timeToMinutes(breakSettings.lunch.end) - timeToMinutes(breakSettings.lunch.start) : durationMinutes
+
+  const slots = await getStaffSlots(
+    staffId,
+    salonId,
+    appointmentDate,
+    forLunch ? lunchDuration : durationMinutes,
+    breakSettings.restMinutes,
+    breakSettings.lunch,
+    excludeAppointmentId,
+    excludeHoldToken,
+    forLunch
+      ? { forLunch: true, lunchDuration }
+      : undefined
+  )
+
+  const filtered = availableOnly ? slots.filter((slot) => slot.available) : slots
+  let times = filtered.map((slot) => slot.time)
+
+  const todayKey = new Date().toISOString().split('T')[0]
+  if (dateKey === todayKey) {
+    const now = new Date()
+    const currentMinutes = now.getHours() * 60 + now.getMinutes()
+    times = times.filter((time) => timeToMinutes(time) > currentMinutes)
+  }
+
+  return times
 }
 
 // Main function: Get available slots for a service
@@ -214,12 +347,14 @@ export async function getAvailableSlots(query: SlotQuery): Promise<AvailableSlot
 
     // Get slots from all staff members
     for (const sid of staffIds) {
+      const breakSettings = await getStaffBreakSettings(sid, salonId)
       const staffSlots = await getStaffSlots(
         sid,
         salonId,
         checkDate,
         service.duration,
-        service.bufferTime
+        breakSettings.restMinutes,
+        breakSettings.lunch,
       )
       allSlots.push(...staffSlots)
     }
@@ -283,7 +418,7 @@ export async function bookAppointment(params: {
   const trackingCode = `SL${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).substring(2, 5).toUpperCase()}`
 
   // Check for conflicts one more time
-  const hasConflictNow = await hasConflict(staffId, date, startTime, endTime)
+  const hasConflictNow = await hasConflict(staffId, date, startTime, endTime, 0)
   if (hasConflictNow) {
     throw new Error('این زمان دیگر در دسترس نیست')
   }

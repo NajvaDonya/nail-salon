@@ -20,7 +20,6 @@ const updateSettingsSchema = z.object({
     requireConfirmation: z.boolean().optional(),
     sendReminders: z.boolean().optional(),
     reminderHours: z.number().optional(),
-    bufferTime: z.number().optional(),
   }).optional(),
 })
 

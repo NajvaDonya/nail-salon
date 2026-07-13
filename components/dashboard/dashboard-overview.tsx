@@ -1,11 +1,12 @@
 'use client'
 
 import { motion } from 'framer-motion'
+import useSWR from 'swr'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { formatPersianDate, formatPersianPrice, englishToPersian } from '@/lib/jalali'
+import { formatPersianDate, formatPersianPrice, englishToPersian, formatPersianTime } from '@/lib/jalali'
 import { PERSIAN_STATUS, STATUS_COLORS } from '@/lib/types'
 import type { AppointmentStatus } from '@/lib/types'
 import {
@@ -18,10 +19,10 @@ import {
   ArrowLeft,
   CheckCircle2,
   XCircle,
+  Loader2,
 } from 'lucide-react'
 import Link from 'next/link'
 
-// Animation variants
 const containerVariants = {
   hidden: { opacity: 0 },
   show: {
@@ -42,11 +43,10 @@ interface StatCardProps {
   value: string | number
   description: string
   icon: React.ReactNode
-  trend?: number
   color?: string
 }
 
-function StatCard({ title, value, description, icon, trend, color = 'primary' }: StatCardProps) {
+function StatCard({ title, value, description, icon, color = 'primary' }: StatCardProps) {
   return (
     <motion.div variants={itemVariants}>
       <Card className="glass hover:shadow-md transition-shadow">
@@ -54,22 +54,15 @@ function StatCard({ title, value, description, icon, trend, color = 'primary' }:
           <div className="flex items-start justify-between">
             <div className="space-y-2">
               <p className="text-sm text-muted-foreground">{title}</p>
-              <p className="text-3xl font-bold">{typeof value === 'number' ? englishToPersian(value.toString()) : value}</p>
+              <p className="text-3xl font-bold">
+                {typeof value === 'number' ? englishToPersian(value.toString()) : value}
+              </p>
               <p className="text-xs text-muted-foreground">{description}</p>
             </div>
             <div className={`w-12 h-12 rounded-xl bg-${color}/10 flex items-center justify-center`}>
               {icon}
             </div>
           </div>
-          {trend !== undefined && (
-            <div className="mt-4 flex items-center gap-1 text-sm">
-              <TrendingUp className={`w-4 h-4 ${trend >= 0 ? 'text-success' : 'text-destructive rotate-180'}`} />
-              <span className={trend >= 0 ? 'text-success' : 'text-destructive'}>
-                {englishToPersian(Math.abs(trend).toString())}%
-              </span>
-              <span className="text-muted-foreground">نسبت به ماه قبل</span>
-            </div>
-          )}
         </CardContent>
       </Card>
     </motion.div>
@@ -87,63 +80,83 @@ interface TodayAppointment {
   price: number
 }
 
-interface DashboardOverviewProps {
-  stats?: {
-    todayAppointments: number
-    weekAppointments: number
-    monthRevenue: number
-    avgRating: number
+const fetcher = async (url: string) => {
+  const res = await fetch(url, { credentials: 'include', cache: 'no-store' })
+  const data = await res.json()
+  if (!res.ok) {
+    throw new Error(data.error || 'خطا در دریافت اطلاعات')
   }
-  todayAppointments?: TodayAppointment[]
+  return data
 }
 
-export function DashboardOverview({ stats, todayAppointments = [] }: DashboardOverviewProps) {
-  // Default mock data for initial display
-  const displayStats = stats || {
-    todayAppointments: 8,
-    weekAppointments: 42,
-    monthRevenue: 15600000,
-    avgRating: 4.7,
+function toTimeString(iso: string) {
+  const date = new Date(iso)
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
+function mapAppointment(apt: {
+  id: string
+  startTime: string
+  status: AppointmentStatus
+  totalPrice: number
+  customer: { firstName: string | null; lastName: string | null }
+  staff: { name: string }
+  services: { name: string }[]
+}): TodayAppointment {
+  const customerName = [apt.customer.firstName, apt.customer.lastName].filter(Boolean).join(' ') || 'مشتری'
+  return {
+    id: apt.id,
+    time: formatPersianTime(toTimeString(apt.startTime)),
+    customerName,
+    serviceName: apt.services.map((service) => service.name).join('، ') || 'خدمت',
+    staffName: apt.staff.name,
+    status: apt.status,
+    price: apt.totalPrice,
+  }
+}
+
+export function DashboardOverview() {
+  const today = new Date().toISOString().split('T')[0]
+
+  const { data: statsData, isLoading: statsLoading, error: statsError } = useSWR(
+    '/api/dashboard/stats',
+    fetcher
+  )
+
+  const { data: appointmentsData, isLoading: appointmentsLoading } = useSWR(
+    `/api/dashboard/appointments?date=${today}`,
+    fetcher
+  )
+
+  const stats = statsData?.stats ?? {
+    todayAppointments: 0,
+    weekAppointments: 0,
+    monthRevenue: 0,
+    avgRating: 0,
   }
 
-  const displayAppointments: TodayAppointment[] = todayAppointments.length > 0 ? todayAppointments : [
-    {
-      id: '1',
-      time: '10:00',
-      customerName: 'سارا احمدی',
-      serviceName: 'کراتین مو',
-      staffName: 'مریم کریمی',
-      status: 'CONFIRMED',
-      price: 850000,
-    },
-    {
-      id: '2',
-      time: '11:30',
-      customerName: 'نازنین رضایی',
-      serviceName: 'رنگ مو',
-      staffName: 'فاطمه حسینی',
-      status: 'PENDING',
-      price: 650000,
-    },
-    {
-      id: '3',
-      time: '14:00',
-      customerName: 'مینا محمدی',
-      serviceName: 'مانیکور',
-      staffName: 'زهرا علیزاده',
-      status: 'CONFIRMED',
-      price: 350000,
-    },
-    {
-      id: '4',
-      time: '15:30',
-      customerName: 'لیلا کاظمی',
-      serviceName: 'اصلاح ابرو',
-      staffName: 'مریم کریمی',
-      status: 'IN_PROGRESS',
-      price: 150000,
-    },
-  ]
+  const todayAppointments: TodayAppointment[] = (appointmentsData?.appointments ?? []).map(mapAppointment)
+  const avgRating =
+    statsData?.recentReviews?.length > 0
+      ? statsData.recentReviews.reduce((sum: number, review: { rating: number }) => sum + review.rating, 0) /
+        statsData.recentReviews.length
+      : 0
+
+  if (statsLoading || appointmentsLoading) {
+    return (
+      <div className="flex justify-center py-24">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    )
+  }
+
+  if (statsError) {
+    return (
+      <Card className="p-8 text-center">
+        <p className="text-destructive">{statsError.message}</p>
+      </Card>
+    )
+  }
 
   return (
     <motion.div
@@ -152,55 +165,50 @@ export function DashboardOverview({ stats, todayAppointments = [] }: DashboardOv
       animate="show"
       className="space-y-6"
     >
-      {/* Page Header */}
       <motion.div variants={itemVariants} className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">داشبورد</h1>
           <p className="text-muted-foreground">{formatPersianDate(new Date(), 'EEEE d MMMM yyyy')}</p>
         </div>
         <Button asChild>
-          <Link href="/dashboard/appointments/new">
+          <Link href="/dashboard/appointments">
             <Calendar className="w-4 h-4 ml-2" />
-            ثبت نوبت جدید
+            مدیریت نوبت‌ها
           </Link>
         </Button>
       </motion.div>
 
-      {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="نوبت‌های امروز"
-          value={displayStats.todayAppointments}
-          description={`${englishToPersian('3')} تکمیل شده`}
+          value={stats.todayAppointments}
+          description="نوبت ثبت‌شده برای امروز"
           icon={<Calendar className="w-6 h-6 text-primary" />}
           color="primary"
         />
         <StatCard
           title="نوبت‌های هفته"
-          value={displayStats.weekAppointments}
-          description="از شنبه تا الان"
+          value={stats.weekAppointments}
+          description="از ابتدای هفته"
           icon={<Users className="w-6 h-6 text-accent-foreground" />}
-          trend={12}
           color="accent"
         />
         <StatCard
           title="درآمد ماه"
-          value={formatPersianPrice(displayStats.monthRevenue)}
-          description="تا امروز"
+          value={formatPersianPrice(stats.monthRevenue)}
+          description="نوبت‌های تکمیل‌شده"
           icon={<DollarSign className="w-6 h-6 text-success" />}
-          trend={8}
           color="success"
         />
         <StatCard
           title="امتیاز کلی"
-          value={englishToPersian(displayStats.avgRating.toFixed(1))}
-          description="از ۵ ستاره"
+          value={englishToPersian(avgRating.toFixed(1))}
+          description={statsData?.recentReviews?.length ? 'از نظرات اخیر' : 'هنوز نظری ثبت نشده'}
           icon={<Star className="w-6 h-6 text-warning" />}
           color="warning"
         />
       </div>
 
-      {/* Today's Appointments */}
       <motion.div variants={itemVariants}>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
@@ -217,7 +225,7 @@ export function DashboardOverview({ stats, todayAppointments = [] }: DashboardOv
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {displayAppointments.map((appointment, index) => (
+              {todayAppointments.map((appointment, index) => (
                 <motion.div
                   key={appointment.id}
                   initial={{ opacity: 0, x: 20 }}
@@ -227,9 +235,9 @@ export function DashboardOverview({ stats, todayAppointments = [] }: DashboardOv
                 >
                   <div className="w-16 text-center">
                     <Clock className="w-4 h-4 mx-auto text-muted-foreground mb-1" />
-                    <span className="text-lg font-bold">{englishToPersian(appointment.time)}</span>
+                    <span className="text-lg font-bold">{appointment.time}</span>
                   </div>
-                  
+
                   <Avatar className="w-10 h-10">
                     <AvatarImage src={appointment.customerAvatar} />
                     <AvatarFallback className="bg-primary/10 text-primary text-sm">
@@ -251,18 +259,20 @@ export function DashboardOverview({ stats, todayAppointments = [] }: DashboardOv
                     </Badge>
                   </div>
 
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" className="w-8 h-8 text-success hover:text-success">
-                      <CheckCircle2 className="w-4 h-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="w-8 h-8 text-destructive hover:text-destructive">
-                      <XCircle className="w-4 h-4" />
-                    </Button>
-                  </div>
+                  {appointment.status === 'PENDING' && (
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="icon" className="w-8 h-8 text-success hover:text-success">
+                        <CheckCircle2 className="w-4 h-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="w-8 h-8 text-destructive hover:text-destructive">
+                        <XCircle className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  )}
                 </motion.div>
               ))}
 
-              {displayAppointments.length === 0 && (
+              {todayAppointments.length === 0 && (
                 <div className="text-center py-8 text-muted-foreground">
                   <Calendar className="w-12 h-12 mx-auto mb-4 opacity-50" />
                   <p>هیچ نوبتی برای امروز ثبت نشده است</p>
