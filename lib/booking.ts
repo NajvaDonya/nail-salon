@@ -77,7 +77,7 @@ async function hasConflict(
       staffId,
       date,
       status: {
-        in: ['PENDING', 'CONFIRMED', 'IN_PROGRESS'],
+        in: ['PENDING', 'CONFIRMED', 'IN_PROGRESS', 'AWAITING_PAYMENT'],
       },
     },
     select: {
@@ -181,7 +181,7 @@ async function getStaffSlots(
       ...(excludeAppointmentId ? { id: { not: excludeAppointmentId } } : {}),
       staffId,
       date,
-      status: { in: ['PENDING', 'CONFIRMED', 'IN_PROGRESS'] },
+      status: { in: ['PENDING', 'CONFIRMED', 'IN_PROGRESS', 'AWAITING_PAYMENT'] },
     },
     select: { startTime: true, endTime: true },
   })

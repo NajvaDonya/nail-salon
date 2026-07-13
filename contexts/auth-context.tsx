@@ -9,7 +9,7 @@ interface AuthContextType {
   loading: boolean
   login: (phone: string, password: string) => Promise<{ success: boolean; error?: string; redirectTo?: string }>
   loginWithOTP: (phone: string, code: string) => Promise<{ success: boolean; error?: string; redirectTo?: string }>
-  requestOTP: (phone: string) => Promise<{ success: boolean; error?: string }>
+  requestOTP: (phone: string) => Promise<{ success: boolean; error?: string; devCode?: string }>
   logout: () => Promise<void>
   refreshUser: () => Promise<void>
 }
@@ -74,7 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const data = await res.json()
       
       if (res.ok) {
-        return { success: true }
+        return { success: true, devCode: data.code }
       }
       return { success: false, error: data.error }
     } catch {

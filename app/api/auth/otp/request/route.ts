@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { generateOTP } from '@/lib/auth'
+import { generateOTP, isMockOtpMode } from '@/lib/auth'
 import { smsService } from '@/lib/sms'
 
 export async function POST(request: Request) {
@@ -75,11 +75,11 @@ export async function POST(request: Request) {
       }
     }
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: true,
       message: 'کد تایید ارسال شد',
-      // Only include code in development
-      ...(process.env.NODE_ENV === 'development' && { code }),
+      ...(isMockOtpMode() && { code, mock: true }),
+      ...(process.env.NODE_ENV === 'development' && !isMockOtpMode() && { code }),
     })
   } catch (error) {
     console.error('OTP request error:', error)

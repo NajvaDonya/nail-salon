@@ -7,6 +7,8 @@ export function getPostLoginRedirect(role: UserRole): string {
       return '/dashboard'
     case 'STAFF':
       return '/staff'
+    case 'CUSTOMER':
+      return '/'
     default:
       return '/'
   }

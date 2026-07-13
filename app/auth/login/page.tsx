@@ -1,7 +1,16 @@
 'use client'
 
+import { useSearchParams } from 'next/navigation'
+import { Suspense } from 'react'
 import { LoginForm } from '@/components/auth'
 import { motion } from 'framer-motion'
+
+function LoginContent() {
+  const searchParams = useSearchParams()
+  const redirectTo = searchParams.get('from') || undefined
+
+  return <LoginForm redirectTo={redirectTo} />
+}
 
 export default function LoginPage() {
   return (
@@ -17,7 +26,9 @@ export default function LoginPage() {
         transition={{ duration: 0.5 }}
         className="w-full max-w-md relative z-10"
       >
-        <LoginForm />
+        <Suspense fallback={<LoginForm />}>
+          <LoginContent />
+        </Suspense>
       </motion.div>
     </div>
   )

@@ -31,6 +31,7 @@ export function LoginForm({ onSuccess, redirectTo }: LoginFormProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [countdown, setCountdown] = useState(0)
+  const [devOtpCode, setDevOtpCode] = useState<string | null>(null)
 
   // Countdown timer for OTP resend
   useEffect(() => {
@@ -55,6 +56,7 @@ export function LoginForm({ onSuccess, redirectTo }: LoginFormProps) {
     if (result.success) {
       setMode('otp')
       setCountdown(60)
+      setDevOtpCode(result.devCode || null)
     } else {
       setError(result.error || 'خطا در ارسال کد')
     }
@@ -144,6 +146,7 @@ export function LoginForm({ onSuccess, redirectTo }: LoginFormProps) {
     const result = await requestOTP(phone)
     if (result.success) {
       setCountdown(60)
+      setDevOtpCode(result.devCode || null)
     } else {
       setError(result.error || 'خطا در ارسال مجدد')
     }
@@ -268,6 +271,13 @@ export function LoginForm({ onSuccess, redirectTo }: LoginFormProps) {
               <div className="text-center text-sm text-muted-foreground mb-4">
                 کد تایید به شماره <span className="font-medium text-foreground dir-ltr">{phone}</span> ارسال شد
               </div>
+
+              {devOtpCode && (
+                <div className="rounded-lg bg-muted p-3 text-center text-sm">
+                  <p className="text-muted-foreground">حالت تست (بدون پیامک)</p>
+                  <p className="font-mono text-lg font-bold tracking-widest dir-ltr">{devOtpCode}</p>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label htmlFor="otp">کد تایید</Label>

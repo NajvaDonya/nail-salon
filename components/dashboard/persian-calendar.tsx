@@ -22,6 +22,7 @@ interface PersianCalendarProps {
   onViewDateChange: (date: Date) => void
   onSelectDate: (date: Date) => void
   appointmentCounts?: Record<string, number>
+  minDate?: Date
 }
 
 export function PersianCalendar({
@@ -30,8 +31,10 @@ export function PersianCalendar({
   onViewDateChange,
   onSelectDate,
   appointmentCounts = {},
+  minDate,
 }: PersianCalendarProps) {
   const days = useMemo(() => getPersianCalendarGrid(viewDate), [viewDate])
+  const minDateKey = minDate ? toDateKey(minDate) : null
 
   return (
     <div className="space-y-4" dir="rtl">
@@ -60,18 +63,21 @@ export function PersianCalendar({
           const inMonth = isSamePersianMonth(day, viewDate)
           const selected = isSameDay(day, selectedDate)
           const today = isToday(day)
+          const disabled = minDateKey ? key < minDateKey : false
 
           return (
             <button
               key={key}
               type="button"
-              onClick={() => onSelectDate(day)}
+              disabled={disabled}
+              onClick={() => !disabled && onSelectDate(day)}
               className={cn(
                 'relative flex flex-col items-center justify-center rounded-lg p-2 min-h-[52px] transition-colors',
                 inMonth ? 'text-foreground' : 'text-muted-foreground/50',
+                disabled && 'opacity-40 cursor-not-allowed',
                 selected && 'bg-primary text-primary-foreground',
                 !selected && today && 'ring-2 ring-primary/40',
-                !selected && 'hover:bg-muted'
+                !selected && !disabled && 'hover:bg-muted'
               )}
             >
               <span className="text-sm font-semibold">{englishToPersian(formatPersianDate(day, 'd'))}</span>

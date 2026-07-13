@@ -9,6 +9,7 @@ export type AppointmentStatus =
   | 'COMPLETED' 
   | 'CANCELLED' 
   | 'NO_SHOW'
+  | 'AWAITING_PAYMENT'
 
 export type DayOfWeek = 
   | 'SATURDAY' 
@@ -76,6 +77,7 @@ export const PERSIAN_STATUS: Record<AppointmentStatus, string> = {
   COMPLETED: 'انجام شده',
   CANCELLED: 'لغو شده',
   NO_SHOW: 'عدم مراجعه',
+  AWAITING_PAYMENT: 'در انتظار پرداخت',
 }
 
 // Status colors for UI
@@ -86,6 +88,7 @@ export const STATUS_COLORS: Record<AppointmentStatus, string> = {
   COMPLETED: 'bg-green-100 text-green-800',
   CANCELLED: 'bg-red-100 text-red-800',
   NO_SHOW: 'bg-gray-100 text-gray-800',
+  AWAITING_PAYMENT: 'bg-orange-100 text-orange-800',
 }
 
 // Role permissions

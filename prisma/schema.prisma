@@ -21,6 +21,14 @@ enum AppointmentStatus {
   COMPLETED
   CANCELLED
   NO_SHOW
+  AWAITING_PAYMENT
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  CANCELLED
 }
 
 enum PendingApprovalType {
@@ -197,6 +205,7 @@ model Appointment {
   staff    Staff                @relation(fields: [staffId], references: [id])
   services AppointmentService[]
   reviews  Review[]
+  payment  Payment?
 }
 
 model AppointmentService {
@@ -260,4 +269,17 @@ model SlotHold {
   @@unique([staffId, date, startTime])
   @@index([holdToken])
   @@index([expiresAt])
+}
+
+model Payment {
+  id            String        @id @default(cuid())
+  appointmentId String        @unique
+  amount        Int
+  status        PaymentStatus @default(PENDING)
+  authority     String?       @unique
+  refId         String?
+  createdAt     DateTime      @default(now())
+  paidAt        DateTime?
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
 }

@@ -2,10 +2,19 @@
 import { format, parse, addDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isToday, isSameMonth, subMonths, addMonths } from 'date-fns-jalali'
 import { faIR } from 'date-fns-jalali/locale'
 
+/** Map legacy moment-style tokens to date-fns v3 tokens */
+function normalizeDateFormat(formatStr: string): string {
+  return formatStr
+    .replace(/dddd/g, 'EEEE')
+    .replace(/YYYY/g, 'yyyy')
+    .replace(/DD/g, 'dd')
+    .replace(/(^|[^d])D([^D]|$)/g, '$1d$2')
+}
+
 // Format date to Persian
 export function formatPersianDate(date: Date | string, formatStr: string = 'yyyy/MM/dd'): string {
   const d = typeof date === 'string' ? new Date(date) : date
-  return format(d, formatStr, { locale: faIR })
+  return format(d, normalizeDateFormat(formatStr), { locale: faIR })
 }
 
 // Format time to Persian (just returns HH:mm in Persian numerals)

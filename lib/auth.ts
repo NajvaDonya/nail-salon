@@ -105,7 +105,17 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
 }
 
 // OTP generation
+export const MOCK_OTP_CODE = '123456'
+
+export function isMockOtpMode(): boolean {
+  const provider = process.env.SMS_PROVIDER || 'console'
+  return provider === 'console' || process.env.MOCK_OTP === 'true'
+}
+
 export function generateOTP(): string {
+  if (isMockOtpMode()) {
+    return MOCK_OTP_CODE
+  }
   return Math.floor(100000 + Math.random() * 900000).toString()
 }
 

@@ -7,6 +7,7 @@ import { getPostLoginRedirect } from '@/lib/auth-redirect'
 const PROTECTED_ROUTES = {
   dashboard: ['/dashboard'],
   staff: ['/staff'],
+  account: ['/account'],
 } as const
 
 function matchesRoute(pathname: string, routes: readonly string[]) {
@@ -47,9 +48,20 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  if (matchesRoute(pathname, PROTECTED_ROUTES.account)) {
+    if (!session) {
+      const loginUrl = new URL('/auth/login', request.url)
+      loginUrl.searchParams.set('from', pathname)
+      return NextResponse.redirect(loginUrl)
+    }
+    if (session.role !== 'CUSTOMER') {
+      return NextResponse.redirect(new URL(getPostLoginRedirect(session.role), request.url))
+    }
+  }
+
   return NextResponse.next()
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/staff/:path*', '/auth/login'],
+  matcher: ['/dashboard/:path*', '/staff/:path*', '/account/:path*', '/auth/login'],
 }
