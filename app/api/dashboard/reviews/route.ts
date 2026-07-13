@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { getCurrentUser } from '@/lib/auth'
+import { getCurrentUser, isManager } from '@/lib/auth'
+import { getManagerSalonId } from '@/lib/salon'
 import { z } from 'zod'
 
 const createReviewSchema = z.object({
@@ -8,6 +9,33 @@ const createReviewSchema = z.object({
   rating: z.number().min(1).max(5),
   comment: z.string().optional(),
 })
+
+async function resolveSalonContext(user: {
+  id: string
+  role: string
+  salonId?: string | null
+}) {
+  if (isManager(user.role)) {
+    return {
+      salonId: await getManagerSalonId(user.id, user.salonId),
+      staffId: null as string | null,
+    }
+  }
+
+  if (user.role === 'STAFF') {
+    const staff = await prisma.staff.findFirst({
+      where: { userId: user.id },
+      select: { id: true, salonId: true },
+    })
+
+    return {
+      salonId: staff?.salonId ?? null,
+      staffId: staff?.id ?? null,
+    }
+  }
+
+  return { salonId: null, staffId: null }
+}
 
 export async function GET(request: Request) {
   try {
@@ -24,24 +52,7 @@ export async function GET(request: Request) {
     const staffId = url.searchParams.get('staffId')
     const rating = url.searchParams.get('rating')
 
-    // Get user's salon
-    let salonId: string | null = null
-    let specificStaffId: string | null = null
-
-    if (user.role === 'MANAGER') {
-      const salon = await prisma.salon.findFirst({
-        where: { ownerId: user.id },
-        select: { id: true },
-      })
-      salonId = salon?.id || null
-    } else if (user.role === 'STAFF') {
-      const staff = await prisma.staff.findFirst({
-        where: { userId: user.id },
-        select: { id: true, salonId: true },
-      })
-      salonId = staff?.salonId || null
-      specificStaffId = staff?.id || null
-    }
+    const { salonId, staffId: specificStaffId } = await resolveSalonContext(user)
 
     if (!salonId) {
       return NextResponse.json(
@@ -118,6 +129,7 @@ export async function GET(request: Request) {
         id: review.id,
         rating: review.rating,
         comment: review.comment,
+        reply: review.reply,
         createdAt: review.createdAt,
         customer: review.customer,
         staff: {

@@ -4,18 +4,9 @@ import { useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import useSWR from 'swr'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Textarea } from '@/components/ui/textarea'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { formatPersianDate, englishToPersian } from '@/lib/jalali'
-import {
-  Star,
-  MessageSquare,
-  Filter,
-  TrendingUp,
-  Reply,
-  Loader2,
-} from 'lucide-react'
+import { Star, MessageSquare, Filter, TrendingUp, Loader2 } from 'lucide-react'
 import {
   Select,
   SelectContent,
@@ -23,23 +14,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog'
 
 interface Review {
   id: string
   customer: {
     firstName: string | null
     lastName: string | null
-  }
-  staff: {
-    name: string
   }
   services: string[]
   rating: number
@@ -85,14 +65,10 @@ function customerName(customer: Review['customer']) {
   return [customer.firstName, customer.lastName].filter(Boolean).join(' ') || 'مشتری'
 }
 
-export default function ReviewsPage() {
+export default function StaffReviewsPage() {
   const [ratingFilter, setRatingFilter] = useState<string>('all')
-  const [selectedReviewId, setSelectedReviewId] = useState<string | null>(null)
-  const [replyText, setReplyText] = useState('')
-  const [isSubmittingReply, setIsSubmittingReply] = useState(false)
-  const [replyError, setReplyError] = useState<string | null>(null)
 
-  const { data, error, isLoading, mutate } = useSWR<ReviewsResponse>('/api/dashboard/reviews', fetcher)
+  const { data, error, isLoading } = useSWR<ReviewsResponse>('/api/dashboard/reviews', fetcher)
 
   const reviews = data?.reviews ?? []
   const stats = data?.stats ?? { total: 0, average: 0, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } }
@@ -108,51 +84,11 @@ export default function ReviewsPage() {
     percentage: stats.total > 0 ? ((stats.distribution[rating] ?? 0) / stats.total) * 100 : 0,
   }))
 
-  const satisfactionRate =
-    stats.total > 0
-      ? Math.round(
-          (reviews.filter((review) => review.rating >= 4).length / stats.total) * 100
-        )
-      : 0
-
-  async function submitReply(reviewId: string) {
-    if (!replyText.trim()) return
-
-    setIsSubmittingReply(true)
-    setReplyError(null)
-
-    try {
-      const res = await fetch(`/api/dashboard/reviews/${reviewId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ reply: replyText.trim() }),
-      })
-
-      const result = await res.json()
-      if (!res.ok) {
-        throw new Error(result.error || 'خطا در ثبت پاسخ')
-      }
-
-      await mutate()
-      setSelectedReviewId(null)
-      setReplyText('')
-    } catch (err) {
-      setReplyError(err instanceof Error ? err.message : 'خطا در ثبت پاسخ')
-    } finally {
-      setIsSubmittingReply(false)
-    }
-  }
-
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      className="space-y-6"
-    >
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">نظرات مشتریان</h1>
-        <p className="text-muted-foreground">مدیریت و پاسخ به نظرات</p>
+        <h1 className="text-2xl font-bold">نظرات من</h1>
+        <p className="text-muted-foreground">بازخورد مشتریان درباره خدمات شما</p>
       </div>
 
       {isLoading && (
@@ -207,7 +143,18 @@ export default function ReviewsPage() {
                     <TrendingUp className="w-8 h-8 text-success" />
                   </div>
                   <div>
-                    <p className="text-3xl font-bold">{englishToPersian(satisfactionRate.toString())}%</p>
+                    <p className="text-3xl font-bold">
+                      {englishToPersian(
+                        String(
+                          stats.total > 0
+                            ? Math.round(
+                                (reviews.filter((r) => r.rating >= 4).length / stats.total) * 100
+                              )
+                            : 0
+                        )
+                      )}
+                      %
+                    </p>
                     <p className="text-sm text-muted-foreground">رضایت مشتریان</p>
                   </div>
                 </div>
@@ -279,11 +226,7 @@ export default function ReviewsPage() {
                           </Avatar>
                           <div>
                             <p className="font-medium">{name}</p>
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <span>{serviceLabel}</span>
-                              <span>•</span>
-                              <span>{review.staff.name}</span>
-                            </div>
+                            <p className="text-sm text-muted-foreground">{serviceLabel}</p>
                           </div>
                         </div>
                         <div className="text-left">
@@ -298,72 +241,8 @@ export default function ReviewsPage() {
 
                       {review.reply && (
                         <div className="bg-muted/50 rounded-lg p-3 mr-8 border-r-2 border-primary">
-                          <p className="text-sm font-medium mb-1">پاسخ شما:</p>
+                          <p className="text-sm font-medium mb-1">پاسخ مدیر:</p>
                           <p className="text-sm text-muted-foreground">{review.reply}</p>
-                        </div>
-                      )}
-
-                      {!review.reply && review.comment && (
-                        <div className="flex justify-end">
-                          <Dialog
-                            open={selectedReviewId === review.id}
-                            onOpenChange={(open) => {
-                              if (!open) {
-                                setSelectedReviewId(null)
-                                setReplyText('')
-                                setReplyError(null)
-                              } else {
-                                setSelectedReviewId(review.id)
-                              }
-                            }}
-                          >
-                            <DialogTrigger asChild>
-                              <Button variant="outline" size="sm">
-                                <Reply className="w-4 h-4 ml-2" />
-                                پاسخ دادن
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                              <DialogHeader>
-                                <DialogTitle>پاسخ به نظر</DialogTitle>
-                                <DialogDescription>
-                                  پاسخ شما به {name} نمایش داده خواهد شد.
-                                </DialogDescription>
-                              </DialogHeader>
-                              <div className="space-y-4">
-                                <div className="bg-muted/50 rounded-lg p-3">
-                                  <p className="text-sm">{review.comment}</p>
-                                </div>
-                                <Textarea
-                                  placeholder="پاسخ خود را بنویسید..."
-                                  value={replyText}
-                                  onChange={(e) => setReplyText(e.target.value)}
-                                  rows={4}
-                                />
-                                {replyError && (
-                                  <p className="text-sm text-destructive">{replyError}</p>
-                                )}
-                                <div className="flex gap-2 justify-end">
-                                  <Button
-                                    variant="outline"
-                                    onClick={() => {
-                                      setSelectedReviewId(null)
-                                      setReplyText('')
-                                      setReplyError(null)
-                                    }}
-                                  >
-                                    انصراف
-                                  </Button>
-                                  <Button
-                                    disabled={!replyText.trim() || isSubmittingReply}
-                                    onClick={() => submitReply(review.id)}
-                                  >
-                                    {isSubmittingReply ? 'در حال ارسال...' : 'ارسال پاسخ'}
-                                  </Button>
-                                </div>
-                              </div>
-                            </DialogContent>
-                          </Dialog>
                         </div>
                       )}
                     </CardContent>

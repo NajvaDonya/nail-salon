@@ -47,11 +47,11 @@ const SLOTS: Array<{
   status: 'PENDING' | 'CONFIRMED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED'
 }> = [
   { date: '2026-07-13', startTime: '09:00', customerIndex: 0, status: 'COMPLETED' },
-  { date: '2026-07-13', startTime: '11:15', customerIndex: 1, status: 'IN_PROGRESS' },
-  { date: '2026-07-13', startTime: '14:00', customerIndex: 2, status: 'CONFIRMED' },
-  { date: '2026-07-14', startTime: '09:00', customerIndex: 3, status: 'CONFIRMED' },
-  { date: '2026-07-14', startTime: '11:15', customerIndex: 4, status: 'CONFIRMED' },
-  { date: '2026-07-14', startTime: '14:00', customerIndex: 5, status: 'PENDING' },
+  { date: '2026-07-13', startTime: '11:15', customerIndex: 1, status: 'COMPLETED' },
+  { date: '2026-07-13', startTime: '14:00', customerIndex: 2, status: 'COMPLETED' },
+  { date: '2026-07-14', startTime: '09:00', customerIndex: 3, status: 'COMPLETED' },
+  { date: '2026-07-14', startTime: '11:15', customerIndex: 4, status: 'COMPLETED' },
+  { date: '2026-07-14', startTime: '14:00', customerIndex: 5, status: 'CONFIRMED' },
   { date: '2026-07-15', startTime: '09:00', customerIndex: 6, status: 'CONFIRMED' },
   { date: '2026-07-15', startTime: '11:15', customerIndex: 7, status: 'CONFIRMED' },
   { date: '2026-07-16', startTime: '09:00', customerIndex: 8, status: 'CONFIRMED' },
@@ -141,6 +141,13 @@ async function main() {
       },
     })
     customerIds.push(user.id)
+  }
+
+  const deletedReviews = await prisma.review.deleteMany({
+    where: { staffId: staff.id },
+  })
+  if (deletedReviews.count > 0) {
+    console.log(`Removed ${deletedReviews.count} old review(s) for دنیا نجوی`)
   }
 
   const deleted = await prisma.appointment.deleteMany({

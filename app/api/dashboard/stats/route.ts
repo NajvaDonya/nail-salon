@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getCurrentUser } from '@/lib/auth'
+import { getManagerSalonId } from '@/lib/salon'
 
 export async function GET() {
   try {
@@ -13,15 +14,10 @@ export async function GET() {
       )
     }
 
-    // Get user's salon based on role
     let salonId: string | null = null
 
-    if (user.role === 'MANAGER') {
-      const salon = await prisma.salon.findFirst({
-        where: { ownerId: user.id },
-        select: { id: true },
-      })
-      salonId = salon?.id || null
+    if (user.role === 'MANAGER' || user.role === 'SUPER_ADMIN') {
+      salonId = await getManagerSalonId(user.id, user.salonId)
     } else if (user.role === 'STAFF') {
       const staff = await prisma.staff.findFirst({
         where: { userId: user.id },
