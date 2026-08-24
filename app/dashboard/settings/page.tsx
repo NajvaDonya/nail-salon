@@ -21,8 +21,23 @@ import {
   Globe
 } from 'lucide-react'
 import useSWR from 'swr'
+import { toast } from 'sonner'
+import {
+  type SalonAppearance,
+  DEFAULT_SALON_APPEARANCE,
+  extractSalonAppearance,
+  appearanceStyleVars,
+} from '@/lib/salon-appearance'
+import { HueColorSlider } from '@/components/salon'
 
-const fetcher = (url: string) => fetch(url).then(res => res.json())
+const fetcher = async (url: string) => {
+  const res = await fetch(url, { credentials: 'include', cache: 'no-store' })
+  const data = await res.json()
+  if (!res.ok) {
+    throw new Error(data.error || 'خطا در دریافت تنظیمات')
+  }
+  return data
+}
 
 interface SalonSettings {
   id: string
@@ -38,6 +53,8 @@ interface SalonSettings {
     requireConfirmation: boolean
     sendReminders: boolean
     reminderHours: number
+    maxAdvanceBookingDays: number
+    appearance?: SalonAppearance
   }
 }
 
@@ -71,17 +88,27 @@ export default function SettingsPage() {
   const currentData = { ...salon, ...formData }
 
   const handleSave = async () => {
+    if (Object.keys(formData).length === 0) return
+
     setIsSaving(true)
     try {
-      await fetch('/api/dashboard/settings', {
+      const res = await fetch('/api/dashboard/settings', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(formData),
       })
-      mutate()
+      const result = await res.json()
+      if (!res.ok) {
+        toast.error(result.error || 'خطا در ذخیره تنظیمات')
+        return
+      }
+      toast.success('تنظیمات با موفقیت ذخیره شد')
+      await mutate()
       setFormData({})
     } catch (error) {
       console.error('Failed to save settings:', error)
+      toast.error('خطا در برقراری ارتباط با سرور')
     } finally {
       setIsSaving(false)
     }
@@ -92,7 +119,10 @@ export default function SettingsPage() {
   }
 
   const updateOpeningHours = (day: string, field: string, value: unknown) => {
-    const currentHours = currentData.openingHours || defaultOpeningHours
+    const currentHours = (currentData.openingHours || defaultOpeningHours) as Record<
+      string,
+      { open: string; close: string; isOpen: boolean }
+    >
     setFormData(prev => ({
       ...prev,
       openingHours: {
@@ -105,13 +135,36 @@ export default function SettingsPage() {
     }))
   }
 
-  const updateSettings = (field: string, value: unknown) => {
-    const currentSettings = currentData.settings || {}
+  const defaultSettings: SalonSettings['settings'] = {
+    allowOnlineBooking: true,
+    requireConfirmation: false,
+    sendReminders: true,
+    reminderHours: 24,
+    maxAdvanceBookingDays: 30,
+  }
+
+  const updateSettings = (field: keyof SalonSettings['settings'], value: unknown) => {
+    const currentSettings = currentData.settings ?? defaultSettings
     setFormData(prev => ({
       ...prev,
       settings: {
         ...currentSettings,
         [field]: value,
+      },
+    }))
+  }
+
+  const updateAppearance = (field: keyof SalonAppearance, value: unknown) => {
+    const currentSettings = currentData.settings ?? defaultSettings
+    const currentAppearance = extractSalonAppearance(currentSettings)
+    setFormData(prev => ({
+      ...prev,
+      settings: {
+        ...currentSettings,
+        appearance: {
+          ...currentAppearance,
+          [field]: value,
+        },
       },
     }))
   }
@@ -124,8 +177,12 @@ export default function SettingsPage() {
     )
   }
 
-  const openingHours = currentData.openingHours || defaultOpeningHours
-  const settings = currentData.settings || {}
+  const openingHours = (currentData.openingHours || defaultOpeningHours) as Record<
+    string,
+    { open: string; close: string; isOpen: boolean }
+  >
+  const settings = currentData.settings ?? defaultSettings
+  const appearance = extractSalonAppearance(settings)
 
   return (
     <div className="space-y-6">
@@ -366,6 +423,23 @@ export default function SettingsPage() {
                     />
                   </div>
                 )}
+
+                <div className="space-y-2">
+                  <Label>حداکثر روزهای رزرو جلوتر</Label>
+                  <p className="text-sm text-muted-foreground">
+                    مشتریان حداکثر چند روز جلوتر می‌توانند نوبت بگیرند
+                  </p>
+                  <Input
+                    type="number"
+                    value={settings.maxAdvanceBookingDays ?? 30}
+                    onChange={(e) =>
+                      updateSettings('maxAdvanceBookingDays', parseInt(e.target.value, 10) || 30)
+                    }
+                    min={0}
+                    max={365}
+                    className="w-32"
+                  />
+                </div>
               </CardContent>
             </Card>
           </motion.div>
@@ -375,16 +449,99 @@ export default function SettingsPage() {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
+            className="space-y-6"
           >
             <Card>
               <CardHeader>
-                <CardTitle>ظاهر صفحه رزرو</CardTitle>
-                <CardDescription>سفارشی‌سازی صفحه رزرو مشتریان</CardDescription>
+                <CardTitle>رنگ‌بندی صفحه رزرو</CardTitle>
+                <CardDescription>
+                  رنگ دلخواه خود را از طیف رنگی انتخاب کنید — پس‌زمینه، بنر و جزئیات صفحه رزرو به‌صورت خودکار هماهنگ می‌شوند
+                </CardDescription>
               </CardHeader>
               <CardContent>
-                <p className="text-muted-foreground text-center py-8">
-                  این قابلیت به زودی اضافه خواهد شد...
-                </p>
+                <HueColorSlider
+                  value={appearance.hue}
+                  onChange={(hue) => updateAppearance('hue', hue)}
+                />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>متن بنر خوش‌آمدگویی</CardTitle>
+                <CardDescription>پیام‌های نمایش داده شده در بالای صفحه رزرو</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="welcomeBadge">برچسب کوچک</Label>
+                  <Input
+                    id="welcomeBadge"
+                    value={appearance.welcomeBadge}
+                    onChange={(e) => updateAppearance('welcomeBadge', e.target.value)}
+                    placeholder={DEFAULT_SALON_APPEARANCE.welcomeBadge}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="welcomeSubtitle">توضیح زیر عنوان</Label>
+                  <Textarea
+                    id="welcomeSubtitle"
+                    value={appearance.welcomeSubtitle}
+                    onChange={(e) => updateAppearance('welcomeSubtitle', e.target.value)}
+                    placeholder={DEFAULT_SALON_APPEARANCE.welcomeSubtitle}
+                    rows={3}
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label>نمایش شخصیت ناخن‌کار</Label>
+                    <p className="text-sm text-muted-foreground">
+                      تصویر شخصیت در بنر و هدر صفحه رزرو
+                    </p>
+                  </div>
+                  <Switch
+                    checked={appearance.showCharacter}
+                    onCheckedChange={(checked) => updateAppearance('showCharacter', checked)}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>پیش‌نمایش</CardTitle>
+                <CardDescription>نمای تقریبی صفحه رزرو با تنظیمات فعلی</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div
+                  className="salon-page rounded-3xl overflow-hidden border"
+                  style={appearanceStyleVars(appearance)}
+                >
+                  <div
+                    className="salon-banner p-5 text-white text-right space-y-2"
+                  >
+                    <p className="text-xs font-semibold bg-white/25 inline-block px-2 py-1 rounded-full">
+                      {appearance.welcomeBadge}
+                    </p>
+                    <p className="font-bold text-lg">
+                      رزرو نوبت — {currentData.name || 'سالن شما'}
+                    </p>
+                    <p className="text-sm text-white/85">{appearance.welcomeSubtitle}</p>
+                  </div>
+                  <div className="salon-card m-4 p-4 text-sm salon-text-muted text-center">
+                    فرم رزرو نوبت
+                  </div>
+                </div>
+                {Object.keys(formData).length > 0 && (
+                  <div className="flex items-center justify-between gap-4 rounded-xl border border-primary/20 bg-primary/5 p-4">
+                    <p className="text-sm text-muted-foreground">
+                      برای اعمال تغییرات روی صفحه رزرو، ذخیره کنید.
+                    </p>
+                    <Button onClick={handleSave} disabled={isSaving}>
+                      <Save className="w-4 h-4 ml-2" />
+                      {isSaving ? 'در حال ذخیره...' : 'ذخیره ظاهر'}
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </motion.div>

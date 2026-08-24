@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db'
 
-export const SLOT_HOLD_TTL_MS = 5 * 60 * 1000
+/** Hold lasts 15 minutes so OTP login has enough time */
+export const SLOT_HOLD_TTL_MS = 15 * 60 * 1000
 
 export class SlotHoldError extends Error {
   constructor(message: string) {
@@ -140,4 +141,54 @@ export async function assertSlotHold(params: {
   if (slotBlockedByHold(params.startTime, endTime, otherHolds)) {
     throw new SlotHoldError('این زمان دیگر در دسترس نیست')
   }
+}
+
+/**
+ * Require an active hold owned by holdToken for the exact slot.
+ * Used at checkout so payment cannot proceed without a valid reservation.
+ */
+export async function verifySlotHold(params: {
+  staffId: string
+  date: string
+  startTime: string
+  durationMinutes: number
+  holdToken: string
+}) {
+  if (!params.holdToken) {
+    throw new SlotHoldError('رزرو موقت زمان منقضی شده است — لطفاً دوباره زمان را انتخاب کنید')
+  }
+
+  await cleanupExpiredSlotHolds()
+
+  const appointmentDate = parseAppointmentDate(params.date)
+  const endTime = minutesToTime(
+    timeToMinutes(params.startTime) + params.durationMinutes
+  )
+
+  const hold = await prisma.slotHold.findFirst({
+    where: {
+      holdToken: params.holdToken,
+      staffId: params.staffId,
+      date: appointmentDate,
+      startTime: params.startTime,
+      endTime,
+      expiresAt: { gt: new Date() },
+    },
+  })
+
+  if (!hold) {
+    throw new SlotHoldError('رزرو موقت زمان منقضی شده است — لطفاً دوباره زمان را انتخاب کنید')
+  }
+
+  const otherHolds = await getActiveHolds({
+    staffId: params.staffId,
+    date: appointmentDate,
+    excludeHoldToken: params.holdToken,
+  })
+
+  if (slotBlockedByHold(params.startTime, endTime, otherHolds)) {
+    throw new SlotHoldError('این زمان دیگر در دسترس نیست')
+  }
+
+  return hold
 }

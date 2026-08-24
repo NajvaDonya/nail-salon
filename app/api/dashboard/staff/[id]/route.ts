@@ -11,6 +11,7 @@ const updateStaffSchema = z.object({
   phone: z.string().min(10).optional(),
   password: z.string().min(6).optional(),
   specialties: z.array(z.string()).min(1, 'حداقل یک تخصص باید انتخاب شود').optional(),
+  serviceIds: z.array(z.string()).optional(),
   isActive: z.boolean().optional(),
 })
 
@@ -59,7 +60,7 @@ export async function PATCH(
       )
     }
 
-    const { firstName, lastName, phone, password, specialties, isActive } = validation.data
+    const { firstName, lastName, phone, password, specialties, serviceIds, isActive } = validation.data
 
     if (phone && phone !== staff.user.phone) {
       const existingUser = await prisma.user.findUnique({ where: { phone } })
@@ -104,6 +105,22 @@ export async function PATCH(
       staffUpdate.specialties = specialtyValidation.valid
     }
     if (isActive !== undefined) staffUpdate.isActive = isActive
+
+    if (serviceIds !== undefined) {
+      const services = await prisma.service.findMany({
+        where: { id: { in: serviceIds }, salonId, isActive: true },
+        select: { id: true },
+      })
+      if (services.length !== serviceIds.length) {
+        return NextResponse.json({ error: 'برخی خدمات انتخاب‌شده معتبر نیست' }, { status: 400 })
+      }
+      await prisma.staffService.deleteMany({ where: { staffId: id } })
+      if (serviceIds.length > 0) {
+        await prisma.staffService.createMany({
+          data: serviceIds.map((serviceId) => ({ staffId: id, serviceId })),
+        })
+      }
+    }
 
     if (Object.keys(userUpdate).length > 0) {
       await prisma.user.update({ where: { id: staff.userId }, data: userUpdate })

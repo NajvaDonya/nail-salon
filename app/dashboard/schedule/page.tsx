@@ -9,6 +9,7 @@ import {
   SalonHoursEditor,
   SaveScheduleButton,
 } from '@/components/schedule/working-hours-editor'
+import { VacationEditor } from '@/components/schedule/vacation-editor'
 import type { SalonHourRow } from '@/lib/schedule'
 import { Clock, Loader2 } from 'lucide-react'
 
@@ -34,9 +35,15 @@ export default function DashboardSchedulePage() {
     fetcher
   )
 
+  const { data: staffData } = useSWR<{
+    staff: { id: string; user: { firstName: string; lastName: string } }[]
+  }>('/api/dashboard/staff', fetcher)
+
   useEffect(() => {
     if (data?.salonHours) setSalonHours(data.salonHours)
   }, [data])
+
+  const staffOptions = staffData?.staff ?? []
 
   const handleSave = async () => {
     setIsSaving(true)
@@ -105,6 +112,8 @@ export default function DashboardSchedulePage() {
           </div>
         </CardContent>
       </Card>
+
+      <VacationEditor canManageSalon staffOptions={staffOptions} />
     </motion.div>
   )
 }

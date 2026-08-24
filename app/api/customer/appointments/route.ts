@@ -25,6 +25,7 @@ export async function GET() {
           },
         },
         payment: { select: { status: true, paidAt: true } },
+        reviews: { select: { id: true, rating: true } },
       },
       orderBy: { startTime: 'desc' },
     })
@@ -37,6 +38,8 @@ export async function GET() {
         startTime: apt.startTime,
         endTime: apt.endTime,
         totalPrice: apt.totalPrice,
+        depositAmount: apt.depositAmount,
+        balanceDue: apt.balanceDue,
         notes: apt.notes,
         salon: apt.salon,
         staff: {
@@ -47,6 +50,8 @@ export async function GET() {
           duration: s.service.duration,
         })),
         payment: apt.payment,
+        hasReview: apt.reviews.length > 0,
+        reviewRating: apt.reviews[0]?.rating ?? null,
       })),
     })
   } catch (error) {

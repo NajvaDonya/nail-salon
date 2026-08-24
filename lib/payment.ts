@@ -15,7 +15,10 @@ const ZARINPAL_START_URL = ZARINPAL_SANDBOX
   : 'https://www.zarinpal.com/pg/StartPay'
 
 export function isPaymentMockMode() {
-  return !ZARINPAL_MERCHANT_ID
+  if (process.env.NODE_ENV === 'production') {
+    return false
+  }
+  return process.env.ENABLE_MOCK_PAYMENTS === 'true'
 }
 
 export async function createPaymentRequest(params: {
@@ -26,9 +29,20 @@ export async function createPaymentRequest(params: {
 }) {
   if (isPaymentMockMode()) {
     const authority = `MOCK${Date.now().toString(36).toUpperCase()}`
+    const mockUrl = new URL('/api/payments/mock', APP_URL)
+    mockUrl.searchParams.set('authority', authority)
+    try {
+      const callback = new URL(params.callbackUrl)
+      const slug = callback.searchParams.get('slug')
+      const returnTo = callback.searchParams.get('returnTo')
+      if (slug) mockUrl.searchParams.set('slug', slug)
+      if (returnTo) mockUrl.searchParams.set('returnTo', returnTo)
+    } catch {
+      // ignore malformed callback URL
+    }
     return {
       authority,
-      paymentUrl: `${APP_URL}/api/payments/mock?authority=${authority}`,
+      paymentUrl: mockUrl.toString(),
     }
   }
 
@@ -58,6 +72,9 @@ export async function createPaymentRequest(params: {
 
 export async function verifyPayment(params: { authority: string; amount: number }) {
   if (params.authority.startsWith('MOCK')) {
+    if (!isPaymentMockMode()) {
+      return { refId: null, ok: false }
+    }
     return { refId: `MOCK-${Date.now()}`, ok: true }
   }
 

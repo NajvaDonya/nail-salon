@@ -54,6 +54,7 @@ interface AnalyticsResponse {
     totalAppointments: number
     completedCount: number
     pendingCount: number
+    awaitingPaymentCount: number
     cancelledCount: number
     completedRevenue: number
     bookedHours: number
@@ -223,7 +224,7 @@ export default function AnalyticsPage() {
         <StatCard
           title="نوبت‌ها"
           value={englishToPersian(summary.totalAppointments.toString())}
-          hint={`${englishToPersian(summary.completedCount.toString())} انجام‌شده · ${englishToPersian(summary.pendingCount.toString())} در انتظار`}
+          hint={`${englishToPersian(summary.completedCount.toString())} انجام‌شده · ${englishToPersian(summary.pendingCount.toString())} در انتظار تایید · ${englishToPersian((summary.awaitingPaymentCount ?? 0).toString())} در انتظار پرداخت (بدون درآمد)`}
           icon={<CalendarCheck className="w-5 h-5" />}
         />
         <StatCard

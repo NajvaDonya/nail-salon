@@ -2,36 +2,32 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getCurrentUser, isManager } from '@/lib/auth'
 import { getManagerSalonId, getSalonCategories } from '@/lib/salon'
+import { resolveSalonAccess } from '@/lib/salon-access'
 import { z } from 'zod'
 
 const createServiceSchema = z.object({
   name: z.string().min(2),
   price: z.number().min(0),
   duration: z.number().min(5),
+  depositAmount: z.number().min(0).optional(),
   categoryId: z.string().min(1),
+  kind: z.enum(['BASE', 'ADDON']).optional(),
+  allowQuantity: z.boolean().optional(),
+  maxQuantity: z.number().int().min(1).optional(),
 })
 
 export async function GET() {
   try {
     const user = await getCurrentUser()
 
-    if (!user || (user.role !== 'MANAGER' && user.role !== 'STAFF')) {
+    if (!user || (user.role !== 'MANAGER' && user.role !== 'STAFF' && user.role !== 'SUPER_ADMIN')) {
       return NextResponse.json(
         { error: 'دسترسی غیرمجاز' },
         { status: 403 }
       )
     }
 
-    let salonId: string | null = null
-    if (user.role === 'MANAGER') {
-      salonId = await getManagerSalonId(user.id, user.salonId)
-    } else {
-      const staff = await prisma.staff.findFirst({
-        where: { userId: user.id },
-        select: { salonId: true },
-      })
-      salonId = staff?.salonId ?? null
-    }
+    const { salonId } = await resolveSalonAccess(user)
 
     if (!salonId) {
       return NextResponse.json(
@@ -69,6 +65,10 @@ export async function GET() {
           price: service.price,
           discountPrice: service.discountPrice,
           duration: service.duration,
+          depositAmount: service.depositAmount,
+          kind: service.kind,
+          allowQuantity: service.allowQuantity,
+          maxQuantity: service.maxQuantity,
           categoryId: matchedCategory?.id ?? service.category,
           category: service.category,
           isActive: service.isActive,
@@ -134,6 +134,10 @@ export async function POST(request: Request) {
         name: validation.data.name,
         price: validation.data.price,
         duration: validation.data.duration,
+        depositAmount: validation.data.depositAmount ?? 0,
+        kind: validation.data.kind ?? 'BASE',
+        allowQuantity: validation.data.allowQuantity ?? false,
+        maxQuantity: validation.data.maxQuantity,
         category: category.name,
         salonId,
       },

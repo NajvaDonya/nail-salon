@@ -1,11 +1,17 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getCurrentUser, isManager } from '@/lib/auth'
-import { getManagerSalonId } from '@/lib/salon'
+import { resolveSalonAccess } from '@/lib/salon-access'
 import { resolveAppointmentCustomer } from '@/lib/customer'
 import { assertSlotHold, releaseHoldsByToken, SlotHoldError } from '@/lib/slot-hold'
 import { getStaffBreakSettings, lunchDurationMinutes } from '@/lib/staff-breaks'
-import { calculateEndTime } from '@/lib/time-utils'
+import { assertStaffQualifiedForServices, StaffQualificationError } from '@/lib/staff-qualification'
+import { computeOccupiedMinutes, computeEndTimeFromStart } from '@/lib/booking-duration'
+import { sumServicesPrice, buildServiceSnapshot } from '@/lib/service-pricing'
+import {
+  findConflictingAppointment,
+  lockStaffForBooking,
+} from '@/lib/appointment-conflict'
 import { z } from 'zod'
 import { endOfMonth, startOfMonth } from 'date-fns-jalali'
 
@@ -33,23 +39,6 @@ const createAppointmentSchema = z
     }
   })
 
-async function resolveSalonAccess(user: { id: string; role: string; salonId?: string | null }) {
-  if (user.role === 'MANAGER') {
-    const salonId = await getManagerSalonId(user.id, user.salonId)
-    return { salonId, staffId: null as string | null }
-  }
-
-  if (user.role === 'STAFF') {
-    const staff = await prisma.staff.findFirst({
-      where: { userId: user.id },
-      select: { id: true, salonId: true },
-    })
-    return { salonId: staff?.salonId ?? null, staffId: staff?.id ?? null }
-  }
-
-  return { salonId: null, staffId: null }
-}
-
 function mapAppointment(apt: {
   id: string
   trackingCode: string | null
@@ -72,7 +61,12 @@ function mapAppointment(apt: {
     id: string
     user: { firstName: string | null; lastName: string | null }
   }
-  services: Array<{ service: { id: string; name: string; price: number; duration: number } }>
+  services: Array<{
+    serviceName?: string
+    finalPrice?: number
+    duration?: number
+    service: { id: string; name: string; price: number; duration: number }
+  }>
 }) {
   return {
     id: apt.id,
@@ -90,7 +84,12 @@ function mapAppointment(apt: {
       id: apt.staff.id,
       name: `${apt.staff.user.firstName ?? ''} ${apt.staff.user.lastName ?? ''}`.trim(),
     },
-    services: apt.services.map((item) => item.service),
+    services: apt.services.map((item) => ({
+      id: item.service.id,
+      name: item.serviceName ?? item.service.name,
+      price: item.finalPrice ?? item.service.price,
+      duration: item.duration ?? item.service.duration,
+    })),
     createdAt: apt.createdAt,
   }
 }
@@ -194,7 +193,7 @@ export async function POST(request: Request) {
   try {
     const user = await getCurrentUser()
 
-    if (!user || (user.role !== 'MANAGER' && user.role !== 'STAFF')) {
+    if (!user || (user.role !== 'MANAGER' && user.role !== 'STAFF' && user.role !== 'SUPER_ADMIN')) {
       return NextResponse.json({ error: 'دسترسی غیرمجاز' }, { status: 403 })
     }
 
@@ -226,7 +225,7 @@ export async function POST(request: Request) {
       holdToken,
     } = validation.data
 
-    if (kind === 'LUNCH' && user.role === 'MANAGER') {
+    if (kind === 'LUNCH' && isManager(user.role)) {
       return NextResponse.json(
         { error: 'تنظیم و ثبت ناهار فقط توسط خود پرسنل امکان‌پذیر است' },
         { status: 403 }
@@ -262,47 +261,48 @@ export async function POST(request: Request) {
     const startDateTime = new Date(`${dateKey}T${startTime}`)
 
     let totalPrice = 0
-    let totalDuration = 0
-    let endTimeStr = ''
+    let occupiedMinutes = 0
+    let endDateTime: Date
+    let snapshots: ReturnType<typeof buildServiceSnapshot>[] = []
 
     if (kind === 'LUNCH') {
       const breakSettings = await getStaffBreakSettings(staffId, salonId)
       if (!breakSettings.lunch) {
         return NextResponse.json({ error: 'بازه ناهار برای این پرسنل تنظیم نشده' }, { status: 400 })
       }
-      totalDuration = lunchDurationMinutes(breakSettings.lunch)
-      endTimeStr = breakSettings.lunch.end
+      occupiedMinutes = lunchDurationMinutes(breakSettings.lunch)
+      endDateTime = new Date(`${dateKey}T${breakSettings.lunch.end}`)
     } else {
       const services = await prisma.service.findMany({
         where: { id: { in: serviceIds }, salonId, isActive: true },
-        select: { id: true, price: true, duration: true },
+        select: {
+          id: true,
+          name: true,
+          price: true,
+          discountPrice: true,
+          duration: true,
+          bufferTime: true,
+        },
       })
 
       if (services.length !== serviceIds.length) {
         return NextResponse.json({ error: 'خدمات انتخاب‌شده معتبر نیستند' }, { status: 400 })
       }
 
-      totalPrice = services.reduce((sum, service) => sum + service.price, 0)
-      totalDuration = services.reduce((sum, service) => sum + service.duration, 0)
-      endTimeStr = calculateEndTime(startTime, totalDuration)
-    }
+      try {
+        await assertStaffQualifiedForServices({ staffId, salonId, serviceIds })
+      } catch (error) {
+        if (error instanceof StaffQualificationError) {
+          return NextResponse.json({ error: error.message }, { status: 400 })
+        }
+        throw error
+      }
 
-    const endDateTime = new Date(`${dateKey}T${endTimeStr}`)
-
-    const conflict = await prisma.appointment.findFirst({
-      where: {
-        staffId,
-        status: { notIn: ['CANCELLED', 'NO_SHOW'] },
-        startTime: { lt: endDateTime },
-        endTime: { gt: startDateTime },
-      },
-    })
-
-    if (conflict) {
-      return NextResponse.json(
-        { error: 'این پرسنل در این زمان نوبت دیگری دارد' },
-        { status: 409 }
-      )
+      totalPrice = sumServicesPrice(services)
+      occupiedMinutes = computeOccupiedMinutes(services)
+      snapshots = services.map((service) => buildServiceSnapshot(service))
+      const endTimeStr = computeEndTimeFromStart(startTime, occupiedMinutes)
+      endDateTime = new Date(`${dateKey}T${endTimeStr}`)
     }
 
     try {
@@ -310,7 +310,7 @@ export async function POST(request: Request) {
         staffId,
         date: dateKey,
         startTime,
-        durationMinutes: totalDuration,
+        durationMinutes: occupiedMinutes,
         holdToken,
       })
     } catch (error) {
@@ -338,62 +338,92 @@ export async function POST(request: Request) {
       }
     }
 
+    const breakSettings = await getStaffBreakSettings(staffId, salonId)
     const trackingCode = `SL${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).substring(2, 5).toUpperCase()}`
     const appointmentStatus = kind === 'LUNCH' ? 'PENDING' : 'CONFIRMED'
 
-    const appointment = await prisma.appointment.create({
-      data: {
-        salonId,
-        customerId: customer.id,
-        staffId,
-        date: appointmentDate,
-        startTime: startDateTime,
-        endTime: endDateTime,
-        totalPrice,
-        status: appointmentStatus,
-        kind,
-        trackingCode,
-        notes,
-        ...(kind === 'SERVICE' && serviceIds.length > 0
-          ? {
-              services: {
-                create: serviceIds.map((serviceId) => ({ serviceId })),
-              },
-            }
-          : {}),
-      },
-      include: {
-        customer: {
-          select: {
-            id: true,
-            phone: true,
-            firstName: true,
-            lastName: true,
-          },
+    const appointment = await prisma.$transaction(async (tx) => {
+      await lockStaffForBooking(staffId, tx)
+
+      if (kind === 'SERVICE') {
+        await assertStaffQualifiedForServices({ staffId, salonId, serviceIds }, tx)
+      }
+
+      const conflict = await findConflictingAppointment(
+        {
+          staffId,
+          startDateTime,
+          endDateTime,
+          restMinutes: breakSettings.restMinutes,
         },
-        staff: {
-          include: {
-            user: {
-              select: {
-                firstName: true,
-                lastName: true,
+        tx
+      )
+
+      if (conflict) {
+        throw new SlotHoldError('این پرسنل در این زمان نوبت دیگری دارد')
+      }
+
+      return tx.appointment.create({
+        data: {
+          salonId,
+          customerId: customer.id,
+          staffId,
+          date: appointmentDate,
+          startTime: startDateTime,
+          endTime: endDateTime,
+          totalPrice,
+          status: appointmentStatus,
+          kind,
+          trackingCode,
+          notes,
+          ...(kind === 'SERVICE' && snapshots.length > 0
+            ? {
+                services: {
+                  create: snapshots.map((snap) => ({
+                    serviceId: snap.serviceId,
+                    serviceName: snap.serviceName,
+                    price: snap.price,
+                    finalPrice: snap.finalPrice,
+                    duration: snap.duration,
+                    bufferTime: snap.bufferTime,
+                  })),
+                },
+              }
+            : {}),
+        },
+        include: {
+          customer: {
+            select: {
+              id: true,
+              phone: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
+          staff: {
+            include: {
+              user: {
+                select: {
+                  firstName: true,
+                  lastName: true,
+                },
+              },
+            },
+          },
+          services: {
+            include: {
+              service: {
+                select: {
+                  id: true,
+                  name: true,
+                  price: true,
+                  duration: true,
+                },
               },
             },
           },
         },
-        services: {
-          include: {
-            service: {
-              select: {
-                id: true,
-                name: true,
-                price: true,
-                duration: true,
-              },
-            },
-          },
-        },
-      },
+      })
     })
 
     if (holdToken) {
@@ -405,6 +435,9 @@ export async function POST(request: Request) {
       appointment: mapAppointment(appointment),
     })
   } catch (error) {
+    if (error instanceof SlotHoldError) {
+      return NextResponse.json({ error: error.message }, { status: 409 })
+    }
     console.error('Error creating appointment:', error)
     return NextResponse.json({ error: 'خطا در ثبت نوبت' }, { status: 500 })
   }

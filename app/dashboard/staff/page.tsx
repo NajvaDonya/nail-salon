@@ -35,6 +35,11 @@ interface Category {
   servicesCount?: number
 }
 
+interface StaffService {
+  id: string
+  name: string
+}
+
 interface StaffMember {
   id: string
   user: {
@@ -45,9 +50,17 @@ interface StaffMember {
     avatar?: string | null
   }
   specialties: string[] | null
+  services?: StaffService[]
   isActive: boolean
   appointmentCount: number
   averageRating: number
+}
+
+interface SalonService {
+  id: string
+  name: string
+  kind?: 'BASE' | 'ADDON'
+  isActive: boolean
 }
 
 const fetcher = async (url: string) => {
@@ -65,6 +78,7 @@ const emptyStaffForm = {
   phone: '',
   password: '',
   specialties: [] as string[],
+  serviceIds: [] as string[],
   isActive: true,
 }
 
@@ -88,7 +102,15 @@ export default function StaffPage() {
     fetcher
   )
 
+  const { data: servicesData, isLoading: servicesLoading } = useSWR<{ services: SalonService[] }>(
+    '/api/dashboard/services',
+    fetcher
+  )
+
   const categories = categoriesData?.categories ?? []
+  const bookableServices = (servicesData?.services ?? []).filter(
+    (service) => service.isActive && (service.kind ?? 'BASE') === 'BASE'
+  )
 
   const staff = data?.staff ?? []
 
@@ -121,6 +143,15 @@ export default function StaffPage() {
     }))
   }
 
+  const toggleService = (serviceId: string) => {
+    setForm((prev) => ({
+      ...prev,
+      serviceIds: prev.serviceIds.includes(serviceId)
+        ? prev.serviceIds.filter((id) => id !== serviceId)
+        : [...prev.serviceIds, serviceId],
+    }))
+  }
+
   const normalizeMemberSpecialties = (member: StaffMember) => {
     const validNames = new Set(categories.map((category) => category.name))
     const existing = Array.isArray(member.specialties) ? member.specialties : []
@@ -136,6 +167,7 @@ export default function StaffPage() {
       phone: member.user.phone,
       password: '',
       specialties: normalizeMemberSpecialties(member),
+      serviceIds: (member.services ?? []).map((service) => service.id),
       isActive: member.isActive,
     })
     setIsEditDialogOpen(true)
@@ -187,6 +219,7 @@ export default function StaffPage() {
         lastName: form.lastName.trim(),
         phone,
         specialties,
+        serviceIds: form.serviceIds,
         isActive: form.isActive,
       }
 
@@ -372,6 +405,53 @@ export default function StaffPage() {
                 {specialty}
               </Badge>
             ))}
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <Label>خدمات قابل ارائه</Label>
+        <p className="text-xs text-muted-foreground">
+          خدمات پایه‌ای که این پرسنل می‌تواند انجام دهد
+        </p>
+        {servicesLoading ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            در حال بارگذاری خدمات...
+          </div>
+        ) : bookableServices.length === 0 ? (
+          <p className="text-sm text-muted-foreground rounded-lg border border-dashed p-3">
+            خدمت پایه‌ای تعریف نشده. از بخش خدمات اضافه کنید.
+          </p>
+        ) : (
+          <div className="rounded-lg border p-3 space-y-2 max-h-40 overflow-y-auto">
+            {bookableServices.map((service) => (
+              <label
+                key={service.id}
+                htmlFor={`${mode}-service-${service.id}`}
+                className="flex items-center gap-3 cursor-pointer rounded-md p-2 hover:bg-muted/50"
+              >
+                <Checkbox
+                  id={`${mode}-service-${service.id}`}
+                  checked={form.serviceIds.includes(service.id)}
+                  onCheckedChange={() => toggleService(service.id)}
+                />
+                <span className="text-sm">{service.name}</span>
+              </label>
+            ))}
+          </div>
+        )}
+        {form.serviceIds.length > 0 && (
+          <div className="flex flex-wrap gap-1 pt-1">
+            {form.serviceIds.map((serviceId) => {
+              const service = bookableServices.find((item) => item.id === serviceId)
+              if (!service) return null
+              return (
+                <Badge key={serviceId} variant="outline" className="text-xs">
+                  {service.name}
+                </Badge>
+              )
+            })}
           </div>
         )}
       </div>

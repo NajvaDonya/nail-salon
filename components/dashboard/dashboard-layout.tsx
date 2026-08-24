@@ -30,6 +30,7 @@ import {
   User,
   Clock,
   ChevronDown,
+  ClipboardList,
 } from 'lucide-react'
 
 const managerNavItems = [
@@ -37,6 +38,7 @@ const managerNavItems = [
   { href: '/dashboard/appointments', label: 'نوبت‌ها', icon: Calendar },
   { href: '/dashboard/staff', label: 'پرسنل', icon: Users },
   { href: '/dashboard/services', label: 'خدمات', icon: Scissors },
+  { href: '/dashboard/visit-types', label: 'نوع مراجعه', icon: ClipboardList },
   { href: '/dashboard/schedule', label: 'ساعات سالن', icon: Clock },
   { href: '/dashboard/reviews', label: 'نظرات', icon: Star },
   { href: '/dashboard/analytics', label: 'گزارشات', icon: BarChart3 },

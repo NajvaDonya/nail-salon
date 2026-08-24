@@ -16,6 +16,7 @@ import {
 } from '@/components/schedule/staff-break-settings-editor'
 import type { SalonHourRow, StaffHourRow } from '@/lib/schedule'
 import { PERSIAN_DAYS, WEEK_DAYS } from '@/lib/schedule'
+import { VacationEditor } from '@/components/schedule/vacation-editor'
 import { Clock, Loader2 } from 'lucide-react'
 
 const fetcher = async (url: string) => {
@@ -144,6 +145,8 @@ export default function StaffSchedulePage() {
           </div>
         </CardContent>
       </Card>
+
+      <VacationEditor />
     </motion.div>
   )
 }

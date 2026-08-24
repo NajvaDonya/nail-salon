@@ -16,6 +16,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Select,
   SelectContent,
@@ -50,6 +51,10 @@ interface Service {
   price: number
   discountPrice?: number | null
   duration: number
+  depositAmount?: number
+  kind?: 'BASE' | 'ADDON'
+  allowQuantity?: boolean
+  maxQuantity?: number | null
   categoryId: string
   category: string
   isActive: boolean
@@ -77,7 +82,11 @@ const emptyServiceForm = {
   name: '',
   price: '',
   duration: '',
+  depositAmount: '',
   categoryId: '',
+  kind: 'BASE' as 'BASE' | 'ADDON',
+  allowQuantity: false,
+  maxQuantity: '',
 }
 
 export default function ServicesPage() {
@@ -93,6 +102,12 @@ export default function ServicesPage() {
   const [categoryError, setCategoryError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isCreatingCategory, setIsCreatingCategory] = useState(false)
+  const [addonServiceIds, setAddonServiceIds] = useState<string[]>([])
+  const [availableAddons, setAvailableAddons] = useState<
+    { id: string; name: string; price: number; duration: number; depositAmount: number }[]
+  >([])
+  const [addonsLoading, setAddonsLoading] = useState(false)
+  const [addonsSaving, setAddonsSaving] = useState(false)
 
   const {
     data: servicesData,
@@ -126,18 +141,51 @@ export default function ServicesPage() {
     setServiceForm(emptyServiceForm)
     setFormError('')
     setEditingService(null)
+    setAddonServiceIds([])
+    setAvailableAddons([])
   }
 
-  const openEditDialog = (service: Service) => {
+  const loadServiceAddons = async (serviceId: string) => {
+    setAddonsLoading(true)
+    try {
+      const res = await fetch(`/api/dashboard/services/${serviceId}/addons`, {
+        credentials: 'include',
+        cache: 'no-store',
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'خطا در دریافت افزونه‌ها')
+      }
+      setAvailableAddons(data.availableAddons ?? [])
+      setAddonServiceIds((data.linkedAddons ?? []).map((addon: { id: string }) => addon.id))
+    } catch {
+      setAvailableAddons([])
+      setAddonServiceIds([])
+    } finally {
+      setAddonsLoading(false)
+    }
+  }
+
+  const openEditDialog = async (service: Service) => {
     setEditingService(service)
     setServiceForm({
       name: service.name,
       price: service.price.toString(),
       duration: service.duration.toString(),
+      depositAmount: (service.depositAmount ?? 0).toString(),
       categoryId: service.categoryId,
+      kind: service.kind ?? 'BASE',
+      allowQuantity: service.allowQuantity ?? false,
+      maxQuantity: service.maxQuantity?.toString() ?? '',
     })
     setFormError('')
     setIsEditDialogOpen(true)
+    if ((service.kind ?? 'BASE') === 'BASE') {
+      await loadServiceAddons(service.id)
+    } else {
+      setAddonServiceIds([])
+      setAvailableAddons([])
+    }
   }
 
   const handleCreateCategory = async (event: React.FormEvent) => {
@@ -234,13 +282,24 @@ export default function ServicesPage() {
       return
     }
 
+    const depositAmount = Number(serviceForm.depositAmount || 0)
+
+    if (!Number.isFinite(depositAmount) || depositAmount < 0) {
+      setFormError('بیعانه معتبر وارد کنید')
+      return
+    }
+
     setIsSubmitting(true)
 
     const payload = {
       name: serviceForm.name.trim(),
       price,
       duration,
+      depositAmount,
       categoryId: serviceForm.categoryId,
+      kind: serviceForm.kind,
+      allowQuantity: serviceForm.allowQuantity,
+      maxQuantity: serviceForm.maxQuantity ? Number(serviceForm.maxQuantity) : undefined,
     }
 
     try {
@@ -271,6 +330,38 @@ export default function ServicesPage() {
       setFormError('خطا در برقراری ارتباط با سرور')
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  const toggleAddonService = (addonId: string) => {
+    setAddonServiceIds((prev) =>
+      prev.includes(addonId) ? prev.filter((id) => id !== addonId) : [...prev, addonId]
+    )
+  }
+
+  const handleSaveAddons = async () => {
+    if (!editingService || (editingService.kind ?? 'BASE') !== 'BASE') return
+
+    setAddonsSaving(true)
+    setFormError('')
+
+    try {
+      const res = await fetch(`/api/dashboard/services/${editingService.id}/addons`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ addonServiceIds }),
+      })
+
+      const result = await res.json()
+      if (!res.ok) {
+        setFormError(result.error || 'خطا در ذخیره افزونه‌ها')
+        return
+      }
+    } catch {
+      setFormError('خطا در برقراری ارتباط با سرور')
+    } finally {
+      setAddonsSaving(false)
     }
   }
 
@@ -346,6 +437,73 @@ export default function ServicesPage() {
           />
         </div>
       </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor={`${mode}-deposit`}>بیعانه (تومان)</Label>
+          <Input
+            id={`${mode}-deposit`}
+            type="number"
+            min={0}
+            dir="ltr"
+            value={serviceForm.depositAmount}
+            onChange={(e) =>
+              setServiceForm((prev) => ({ ...prev, depositAmount: e.target.value }))
+            }
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor={`${mode}-kind`}>نوع</Label>
+          <Select
+            value={serviceForm.kind}
+            onValueChange={(value: 'BASE' | 'ADDON') =>
+              setServiceForm((prev) => ({ ...prev, kind: value }))
+            }
+          >
+            <SelectTrigger id={`${mode}-kind`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="BASE">خدمت پایه</SelectItem>
+              <SelectItem value="ADDON">افزونه</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      <div className="flex items-center justify-between rounded-lg border p-3">
+        <div>
+          <Label htmlFor={`${mode}-allowQuantity`}>امکان انتخاب تعداد</Label>
+          <p className="text-xs text-muted-foreground">
+            برای خدماتی مثل «ناخن شکسته» که قیمت و مدت به ازای هر واحد است
+          </p>
+        </div>
+        <Checkbox
+          id={`${mode}-allowQuantity`}
+          checked={serviceForm.allowQuantity}
+          onCheckedChange={(checked) =>
+            setServiceForm((prev) => ({
+              ...prev,
+              allowQuantity: checked === true,
+              maxQuantity: checked === true ? prev.maxQuantity : '',
+            }))
+          }
+        />
+      </div>
+      {serviceForm.allowQuantity && (
+        <div className="space-y-2">
+          <Label htmlFor={`${mode}-maxQuantity`}>حداکثر تعداد</Label>
+          <Input
+            id={`${mode}-maxQuantity`}
+            type="number"
+            min={1}
+            dir="ltr"
+            placeholder="مثلاً ۱۰"
+            value={serviceForm.maxQuantity}
+            onChange={(e) =>
+              setServiceForm((prev) => ({ ...prev, maxQuantity: e.target.value }))
+            }
+          />
+        </div>
+      )}
       <div className="space-y-2">
         <Label htmlFor={`${mode}-categoryId`}>دسته‌بندی</Label>
         <Select
@@ -366,6 +524,63 @@ export default function ServicesPage() {
           </SelectContent>
         </Select>
       </div>
+
+      {mode === 'edit' && serviceForm.kind === 'BASE' && (
+        <div className="space-y-2 rounded-lg border p-3">
+          <Label>افزونه‌های مرتبط</Label>
+          <p className="text-xs text-muted-foreground">
+            افزونه‌هایی که در رزرو بعد از انتخاب این خدمت نمایش داده می‌شوند
+          </p>
+          {addonsLoading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              در حال بارگذاری افزونه‌ها...
+            </div>
+          ) : availableAddons.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              افزونه‌ای تعریف نشده. ابتدا خدمت با نوع «افزونه» بسازید.
+            </p>
+          ) : (
+            <div className="space-y-2 max-h-36 overflow-y-auto">
+              {availableAddons.map((addon) => (
+                <label
+                  key={addon.id}
+                  htmlFor={`${mode}-addon-${addon.id}`}
+                  className="flex items-center gap-3 cursor-pointer rounded-md p-2 hover:bg-muted/50"
+                >
+                  <Checkbox
+                    id={`${mode}-addon-${addon.id}`}
+                    checked={addonServiceIds.includes(addon.id)}
+                    onCheckedChange={() => toggleAddonService(addon.id)}
+                  />
+                  <span className="text-sm flex-1">{addon.name}</span>
+                  <span className="text-xs text-muted-foreground" dir="ltr">
+                    {formatPersianPrice(addon.price)}
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+          {availableAddons.length > 0 && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={handleSaveAddons}
+              disabled={addonsSaving || addonsLoading}
+            >
+              {addonsSaving ? (
+                <>
+                  <Loader2 className="w-4 h-4 ml-2 animate-spin" />
+                  در حال ذخیره افزونه‌ها...
+                </>
+              ) : (
+                'ذخیره افزونه‌ها'
+              )}
+            </Button>
+          )}
+        </div>
+      )}
 
       {formError && (
         <p className="text-sm text-destructive text-center">{formError}</p>

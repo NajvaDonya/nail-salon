@@ -13,8 +13,8 @@ async function sendSMS(phone: string, message: string): Promise<boolean> {
   const apiKey = process.env.SMS_API_KEY
   const apiUrl = process.env.SMS_API_URL
 
-  // Development mode - just log to console
-  if (provider === 'console' || process.env.NODE_ENV === 'development') {
+  // Development mode with explicit console provider only
+  if (provider === 'console') {
     console.log(`[SMS] To: ${phone}`)
     console.log(`[SMS] Message: ${message}`)
     return true

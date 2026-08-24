@@ -23,6 +23,7 @@ interface PersianCalendarProps {
   onSelectDate: (date: Date) => void
   appointmentCounts?: Record<string, number>
   minDate?: Date
+  maxDate?: Date
 }
 
 export function PersianCalendar({
@@ -32,9 +33,11 @@ export function PersianCalendar({
   onSelectDate,
   appointmentCounts = {},
   minDate,
+  maxDate,
 }: PersianCalendarProps) {
   const days = useMemo(() => getPersianCalendarGrid(viewDate), [viewDate])
   const minDateKey = minDate ? toDateKey(minDate) : null
+  const maxDateKey = maxDate ? toDateKey(maxDate) : null
 
   return (
     <div className="space-y-4" dir="rtl">
@@ -63,7 +66,8 @@ export function PersianCalendar({
           const inMonth = isSamePersianMonth(day, viewDate)
           const selected = isSameDay(day, selectedDate)
           const today = isToday(day)
-          const disabled = minDateKey ? key < minDateKey : false
+          const disabled =
+            (minDateKey ? key < minDateKey : false) || (maxDateKey ? key > maxDateKey : false)
 
           return (
             <button

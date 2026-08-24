@@ -1,7 +1,25 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { getCurrentUser } from '@/lib/auth'
+import { Prisma } from '@prisma/client'
+import { getCurrentUser, isManager } from '@/lib/auth'
+import { getManagerSalonId } from '@/lib/salon'
 import { z } from 'zod'
+
+import { mergeSalonSettings } from '@/lib/salon-appearance'
+import type { UserRole } from '@/lib/types'
+
+function canManageSettings(role: UserRole) {
+  return isManager(role)
+}
+
+const appearanceSchema = z.object({
+  hue: z.number().min(0).max(360).optional(),
+  // Accept legacy theme for old clients; mergeSalonSettings converts to hue
+  theme: z.enum(['violet', 'rose', 'teal', 'amber']).optional(),
+  welcomeBadge: z.string().max(80).optional(),
+  welcomeSubtitle: z.string().max(300).optional(),
+  showCharacter: z.boolean().optional(),
+})
 
 const updateSettingsSchema = z.object({
   name: z.string().min(2).optional(),
@@ -15,11 +33,13 @@ const updateSettingsSchema = z.object({
     close: z.string(),
     isOpen: z.boolean(),
   })).optional(),
-    settings: z.object({
+  settings: z.object({
     allowOnlineBooking: z.boolean().optional(),
     requireConfirmation: z.boolean().optional(),
     sendReminders: z.boolean().optional(),
     reminderHours: z.number().optional(),
+    maxAdvanceBookingDays: z.number().int().min(0).max(365).optional(),
+    appearance: appearanceSchema.optional(),
   }).optional(),
 })
 
@@ -27,16 +47,24 @@ export async function GET() {
   try {
     const user = await getCurrentUser()
     
-    if (!user || user.role !== 'MANAGER') {
+    if (!user || !canManageSettings(user.role)) {
       return NextResponse.json(
         { error: 'دسترسی غیرمجاز' },
         { status: 403 }
       )
     }
 
+    const salonId = await getManagerSalonId(user.id, user.salonId)
+    if (!salonId) {
+      return NextResponse.json(
+        { error: 'سالن یافت نشد' },
+        { status: 404 }
+      )
+    }
+
     const salon = await prisma.salon.findUnique({
-  where: { id: user.salonId! },
-})
+      where: { id: salonId },
+    })
 
     if (!salon) {
       return NextResponse.json(
@@ -59,17 +87,25 @@ export async function PATCH(request: Request) {
   try {
     const user = await getCurrentUser()
     
-    if (!user || user.role !== 'MANAGER') {
+    if (!user || !canManageSettings(user.role)) {
       return NextResponse.json(
         { error: 'دسترسی غیرمجاز' },
         { status: 403 }
       )
     }
 
-const salon = await prisma.salon.findUnique({
-  where: { id: user.salonId! },
-  select: { id: true },
-})
+    const salonId = await getManagerSalonId(user.id, user.salonId)
+    if (!salonId) {
+      return NextResponse.json(
+        { error: 'سالن یافت نشد' },
+        { status: 404 }
+      )
+    }
+
+    const salon = await prisma.salon.findUnique({
+      where: { id: salonId },
+      select: { id: true, settings: true },
+    })
 
     if (!salon) {
       return NextResponse.json(
@@ -95,7 +131,9 @@ const salon = await prisma.salon.findUnique({
       data: {
         ...basicData,
         ...(openingHours && { openingHours }),
-        ...(settings && { settings }),
+        ...(settings && {
+          settings: mergeSalonSettings(salon.settings, settings) as Prisma.InputJsonValue,
+        }),
       },
     })
 

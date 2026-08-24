@@ -5,10 +5,7 @@ import { cookies } from 'next/headers'
 import type { NextResponse } from 'next/server'
 import type { JWTPayload, AuthUser, UserRole } from './types'
 import { AUTH_COOKIE_NAME, AUTH_COOKIE_OPTIONS } from './auth-cookie'
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'your-secret-key-change-in-production'
-)
+import { getJwtSecret } from './jwt-config'
 
 const TOKEN_EXPIRY = '7d'
 
@@ -29,12 +26,12 @@ export async function createToken(payload: Omit<JWTPayload, 'iat' | 'exp'>): Pro
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime(TOKEN_EXPIRY)
-    .sign(JWT_SECRET)
+    .sign(getJwtSecret())
 }
 
 export async function verifyToken(token: string): Promise<JWTPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET)
+    const { payload } = await jwtVerify(token, getJwtSecret())
     return payload as unknown as JWTPayload
   } catch {
     return null
@@ -89,6 +86,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       avatar: true,
       role: true,
       salonId: true,
+      isActive: true,
       salon: {
         select: {
           id: true,
@@ -99,7 +97,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
     },
   })
 
-  if (!user) return null
+  if (!user || !user.isActive) return null
 
   return user as AuthUser
 }

@@ -1,28 +1,36 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
+import { cleanupExpiredAwaitingPayments } from '@/lib/appointment-cleanup'
 import { getStaffAvailableTimes } from '@/lib/booking'
+import {
+  BookingQuoteError,
+  mergeSelections,
+  parseSelectionsParam,
+  resolveQuoteForSalon,
+} from '@/lib/booking-quote'
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
+    await cleanupExpiredAwaitingPayments()
     const { slug } = await params
     const url = new URL(request.url)
     const dateStr = url.searchParams.get('date')
-    const serviceIdsParam = url.searchParams.get('serviceIds')
     const holdToken = url.searchParams.get('holdToken') ?? undefined
+    const staffIdFilter = url.searchParams.get('staffId')
+    const baseServiceIds =
+      url.searchParams.get('baseServiceIds')?.split(',').filter(Boolean) ??
+      url.searchParams.get('serviceIds')?.split(',').filter(Boolean) ??
+      []
+    const selections = parseSelectionsParam(url.searchParams.get('selections'))
 
-    if (!dateStr || !serviceIdsParam) {
+    if (!dateStr || baseServiceIds.length === 0) {
       return NextResponse.json(
-        { error: 'پارامترهای date و serviceIds الزامی هستند' },
+        { error: 'پارامترهای date و baseServiceIds الزامی هستند' },
         { status: 400 }
       )
-    }
-
-    const serviceIds = serviceIdsParam.split(',').filter(Boolean)
-    if (serviceIds.length === 0) {
-      return NextResponse.json({ error: 'حداقل یک خدمت انتخاب کنید' }, { status: 400 })
     }
 
     const salon = await prisma.salon.findUnique({
@@ -34,24 +42,31 @@ export async function GET(
       return NextResponse.json({ error: 'سالن یافت نشد' }, { status: 404 })
     }
 
-    const services = await prisma.service.findMany({
-      where: { id: { in: serviceIds }, salonId: salon.id, isActive: true },
-      select: { duration: true },
-    })
-
-    if (services.length !== serviceIds.length) {
-      return NextResponse.json({ error: 'خدمات انتخاب‌شده معتبر نیستند' }, { status: 400 })
+    let quote
+    try {
+      quote = await resolveQuoteForSalon(prisma, salon.id, {
+        baseServiceIds,
+        selections: mergeSelections(baseServiceIds, selections),
+        preferredStaffId: staffIdFilter,
+      })
+    } catch (error) {
+      if (error instanceof BookingQuoteError) {
+        return NextResponse.json({ error: error.message }, { status: 400 })
+      }
+      throw error
     }
 
-    const durationMinutes = services.reduce((sum, s) => sum + s.duration, 0)
     const dateKey = dateStr.split('T')[0]
+    const qualifiedStaffIds = staffIdFilter
+      ? quote.qualifiedStaffIds
+      : quote.qualifiedStaffIds
 
     const staff = await prisma.staff.findMany({
       where: {
+        id: { in: qualifiedStaffIds },
         salonId: salon.id,
         isActive: true,
         user: { isActive: true },
-        services: { some: { serviceId: { in: serviceIds } } },
       },
       include: {
         user: { select: { firstName: true, lastName: true } },
@@ -64,7 +79,7 @@ export async function GET(
           staffId: member.id,
           salonId: salon.id,
           date: dateKey,
-          durationMinutes,
+          durationMinutes: quote.occupiedMinutes,
           excludeHoldToken: holdToken,
         })
 
@@ -75,7 +90,11 @@ export async function GET(
       })
     )
 
-    return NextResponse.json({ availability, durationMinutes })
+    return NextResponse.json({
+      availability,
+      durationMinutes: quote.occupiedMinutes,
+      qualifiedStaffIds: quote.qualifiedStaffIds,
+    })
   } catch (error) {
     console.error('Error fetching staff availability:', error)
     return NextResponse.json(

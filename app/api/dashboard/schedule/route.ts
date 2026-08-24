@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getCurrentUser, isManager } from '@/lib/auth'
 import { getManagerSalonId } from '@/lib/salon'
+import { resolveSalonAccess } from '@/lib/salon-access'
 import {
   buildSalonHoursFromDb,
   buildStaffHoursFromDb,
@@ -54,20 +55,7 @@ const patchSchema = z.object({
 })
 
 async function resolveSalonContext(user: { id: string; role: string; salonId?: string | null }) {
-  if (user.role === 'MANAGER') {
-    const salonId = await getManagerSalonId(user.id, user.salonId)
-    return { salonId, staffId: null as string | null }
-  }
-
-  if (user.role === 'STAFF') {
-    const staff = await prisma.staff.findFirst({
-      where: { userId: user.id },
-      select: { id: true, salonId: true },
-    })
-    return { salonId: staff?.salonId ?? null, staffId: staff?.id ?? null }
-  }
-
-  return { salonId: null, staffId: null }
+  return resolveSalonAccess(user)
 }
 
 async function loadSalonHours(salonId: string): Promise<SalonHourRow[]> {
@@ -105,7 +93,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'لطفا وارد شوید' }, { status: 401 })
     }
 
-    if (user.role !== 'MANAGER' && user.role !== 'STAFF') {
+    if (user.role !== 'MANAGER' && user.role !== 'STAFF' && user.role !== 'SUPER_ADMIN') {
       return NextResponse.json({ error: 'دسترسی غیرمجاز' }, { status: 403 })
     }
 
@@ -151,7 +139,7 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: 'لطفا وارد شوید' }, { status: 401 })
     }
 
-    if (user.role !== 'MANAGER' && user.role !== 'STAFF') {
+    if (user.role !== 'MANAGER' && user.role !== 'STAFF' && user.role !== 'SUPER_ADMIN') {
       return NextResponse.json({ error: 'دسترسی غیرمجاز' }, { status: 403 })
     }
 

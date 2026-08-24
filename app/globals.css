@@ -227,6 +227,65 @@
   .status-cancelled {
     @apply bg-destructive/20 text-destructive-foreground border border-destructive/30;
   }
+
+  /* Nail salon booking page — theme via CSS variables */
+  .salon-page {
+    background: linear-gradient(
+      165deg,
+      var(--salon-bg-1, oklch(0.94 0.04 300)) 0%,
+      var(--salon-bg-2, oklch(0.97 0.02 350)) 45%,
+      var(--salon-bg-3, oklch(0.96 0.03 85)) 100%
+    );
+    color: var(--salon-text, oklch(0.35 0.12 300));
+  }
+
+  .salon-header {
+    background: oklch(1 0 0 / 0.55);
+    border-bottom: 1px solid var(--salon-card-border, oklch(0.88 0.04 300 / 0.5));
+  }
+
+  .salon-text-primary {
+    color: var(--salon-text, oklch(0.35 0.12 300));
+  }
+
+  .salon-text-muted {
+    color: var(--salon-text-muted, oklch(0.45 0.08 300 / 0.8));
+  }
+
+  .salon-accent {
+    color: var(--salon-accent, oklch(0.62 0.2 350));
+  }
+
+  .salon-banner {
+    background: linear-gradient(
+      135deg,
+      var(--salon-banner-1, oklch(0.55 0.18 300)) 0%,
+      var(--salon-banner-2, oklch(0.62 0.16 350)) 50%,
+      var(--salon-banner-3, oklch(0.68 0.14 330)) 100%
+    );
+    box-shadow:
+      0 20px 40px -12px oklch(0.45 0.12 300 / 0.35),
+      inset 0 1px 0 oklch(1 0 0 / 0.2);
+  }
+
+  .salon-card {
+    background: oklch(0.995 0.005 85);
+    border-radius: 2rem;
+    box-shadow:
+      0 4px 24px -4px oklch(0.45 0.08 300 / 0.12),
+      0 0 0 1px var(--salon-card-border, oklch(0.92 0.03 300 / 0.6));
+  }
+
+  .salon-tip-bubble {
+    background: oklch(1 0 0);
+    border-radius: 1.25rem;
+    border: 1px solid var(--salon-card-border, oklch(0.9 0.04 300));
+    box-shadow: 0 4px 12px oklch(0.5 0.08 300 / 0.08);
+  }
+
+  .salon-pill-btn {
+    @apply rounded-full font-semibold shadow-md transition-all;
+  }
 }
 
 /* Animation keyframes */

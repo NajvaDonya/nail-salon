@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient, Prisma } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 import { buildDefaultCategories } from '../lib/salon'
 
@@ -53,11 +53,49 @@ async function main() {
     data: {
       settings: {
         serviceCategories: categoryNames,
-      },
+      } as unknown as Prisma.InputJsonValue,
     },
   })
 
   console.log('Created default categories')
+
+  const defaultVisitTypes = [
+    {
+      name: 'اولین بار در سالن',
+      description: 'اولین مراجعه شما به سالن',
+      behavior: 'FIRST_TIME' as const,
+      sortOrder: 0,
+    },
+    {
+      name: 'مشتری قبلی سالن',
+      description: 'قبلاً از خدمات سالن استفاده کرده‌ام',
+      behavior: 'RETURNING' as const,
+      sortOrder: 1,
+    },
+    {
+      name: 'کار با پرسنل مشخص',
+      description: 'قبلاً با یک پرسنل خاص کار کرده‌ام',
+      behavior: 'PREFERRED_STAFF' as const,
+      sortOrder: 2,
+    },
+  ]
+
+  await prisma.visitType.createMany({
+    data: defaultVisitTypes.map((vt) => ({ ...vt, salonId: salon.id })),
+    skipDuplicates: true,
+  })
+
+  const salons = await prisma.salon.findMany({ select: { id: true } })
+  for (const { id: salonId } of salons) {
+    const existingCount = await prisma.visitType.count({ where: { salonId } })
+    if (existingCount === 0) {
+      await prisma.visitType.createMany({
+        data: defaultVisitTypes.map((vt) => ({ ...vt, salonId })),
+      })
+    }
+  }
+
+  console.log('Created default visit types')
 
   const days = ['SATURDAY', 'SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY']
 

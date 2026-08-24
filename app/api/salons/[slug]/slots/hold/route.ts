@@ -6,12 +6,31 @@ import {
   createOrRefreshSlotHold,
   releaseHoldsByToken,
 } from '@/lib/slot-hold'
+import {
+  parseSalonSettings,
+  assertOnlineBookingAllowed,
+  assertBookingDateWithinLimit,
+  OnlineBookingDisabledError,
+  BookingDateOutOfRangeError,
+} from '@/lib/salon-settings'
+import { assertStaffQualifiedForServices, StaffQualificationError } from '@/lib/staff-qualification'
+import {
+  BookingQuoteError,
+  mergeSelections,
+  resolveQuoteForSalon,
+} from '@/lib/booking-quote'
+
+const selectionSchema = z.object({
+  serviceId: z.string(),
+  quantity: z.number().int().min(1).default(1),
+})
 
 const holdSchema = z.object({
   holdToken: z.string().min(1),
   date: z.string(),
   startTime: z.string(),
-  serviceIds: z.array(z.string()).min(1),
+  baseServiceIds: z.array(z.string()).min(1),
+  selections: z.array(selectionSchema).default([]),
   staffId: z.string(),
 })
 
@@ -23,12 +42,14 @@ export async function POST(
     const { slug } = await params
     const salon = await prisma.salon.findUnique({
       where: { slug },
-      select: { id: true },
+      select: { id: true, settings: true },
     })
 
     if (!salon) {
       return NextResponse.json({ error: 'سالن یافت نشد' }, { status: 404 })
     }
+
+    const salonSettings = parseSalonSettings(salon.settings)
 
     const body = await request.json()
     const validation = holdSchema.safeParse(body)
@@ -36,31 +57,51 @@ export async function POST(
       return NextResponse.json({ error: 'اطلاعات نامعتبر است' }, { status: 400 })
     }
 
-    const { holdToken, date, startTime, serviceIds, staffId } = validation.data
+    const { holdToken, date, startTime, baseServiceIds, selections, staffId } = validation.data
+    const dateKey = date.split('T')[0]
 
-    const staff = await prisma.staff.findFirst({
-      where: { id: staffId, salonId: salon.id, isActive: true, user: { isActive: true } },
-    })
-    if (!staff) {
-      return NextResponse.json({ error: 'پرسنل یافت نشد' }, { status: 400 })
+    try {
+      assertOnlineBookingAllowed(salonSettings)
+      assertBookingDateWithinLimit(dateKey, salonSettings)
+    } catch (error) {
+      if (error instanceof OnlineBookingDisabledError || error instanceof BookingDateOutOfRangeError) {
+        return NextResponse.json({ error: error.message }, { status: 403 })
+      }
+      throw error
     }
 
-    const services = await prisma.service.findMany({
-      where: { id: { in: serviceIds }, salonId: salon.id, isActive: true },
-      select: { duration: true },
-    })
-    if (services.length !== serviceIds.length) {
-      return NextResponse.json({ error: 'خدمات انتخاب‌شده معتبر نیستند' }, { status: 400 })
+    let quote
+    try {
+      quote = await resolveQuoteForSalon(prisma, salon.id, {
+        baseServiceIds,
+        selections: mergeSelections(baseServiceIds, selections),
+      })
+    } catch (error) {
+      if (error instanceof BookingQuoteError) {
+        return NextResponse.json({ error: error.message }, { status: 400 })
+      }
+      throw error
     }
 
-    const durationMinutes = services.reduce((sum, service) => sum + service.duration, 0)
+    try {
+      await assertStaffQualifiedForServices({
+        staffId,
+        salonId: salon.id,
+        serviceIds: quote.serviceIds,
+      })
+    } catch (error) {
+      if (error instanceof StaffQualificationError) {
+        return NextResponse.json({ error: error.message }, { status: 400 })
+      }
+      throw error
+    }
 
     await createOrRefreshSlotHold({
       salonId: salon.id,
       staffId,
       date,
       startTime,
-      durationMinutes,
+      durationMinutes: quote.occupiedMinutes,
       holdToken,
     })
 

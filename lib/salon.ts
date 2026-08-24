@@ -1,4 +1,5 @@
 import { prisma } from './db'
+import { Prisma } from '@prisma/client'
 import { mapLegacyCategory } from './category-map'
 
 export { mapLegacyCategory } from './category-map'
@@ -60,7 +61,7 @@ export async function saveSalonCategories(
       settings: {
         ...settings,
         serviceCategories: categories,
-      },
+      } as unknown as Prisma.InputJsonValue,
     },
   })
 }

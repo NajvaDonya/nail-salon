@@ -2,6 +2,7 @@
 
 import { prisma } from './db'
 import type { DayOfWeek, TimeSlot, AvailableSlot } from './types'
+import { cleanupExpiredAwaitingPayments } from './appointment-cleanup'
 import { getActiveHolds, slotBlockedByHold } from './slot-hold'
 import { getStaffBreakSettings, type LunchWindow } from './staff-breaks'
 import { timeToMinutes, minutesToTime, calculateEndTime } from './time-utils'
@@ -83,13 +84,15 @@ async function hasConflict(
     select: {
       startTime: true,
       endTime: true,
+      services: { select: { bufferTime: true } },
     },
   })
 
   for (const apt of appointments) {
     const aptStart = timeToMinutes(timeFromDateTime(apt.startTime))
     const aptEnd = timeToMinutes(timeFromDateTime(apt.endTime))
-    const blockedEnd = aptEnd + restMinutes
+    const aptBuffer = apt.services.reduce((sum, line) => sum + (line.bufferTime ?? 0), 0)
+    const blockedEnd = aptEnd + restMinutes + aptBuffer
 
     if (timesOverlapMinutes(startMinutes, endMinutes, aptStart, blockedEnd)) {
       return true
@@ -183,7 +186,7 @@ async function getStaffSlots(
       date,
       status: { in: ['PENDING', 'CONFIRMED', 'IN_PROGRESS', 'AWAITING_PAYMENT'] },
     },
-    select: { startTime: true, endTime: true },
+    select: { startTime: true, endTime: true, services: { select: { bufferTime: true } } },
   })
 
   const slots: TimeSlot[] = []
@@ -251,6 +254,8 @@ export async function getStaffAvailableTimes(params: {
     availableOnly = true,
     kind = 'SERVICE',
   } = params
+
+  await cleanupExpiredAwaitingPayments()
 
   const dateKey = params.date.split('T')[0]
   const [year, month, day] = dateKey.split('-').map(Number)

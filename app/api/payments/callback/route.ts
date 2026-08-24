@@ -2,6 +2,19 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { verifyPayment } from '@/lib/payment'
 import { sendAppointmentConfirmation } from '@/lib/sms'
+import { parseSalonSettings, shouldRequireConfirmation } from '@/lib/salon-settings'
+
+function resolveReturnBase(returnTo: string | null, salonSlug: string): string {
+  if (returnTo === '/') return '/'
+  if (
+    returnTo &&
+    returnTo.startsWith('/salon/') &&
+    (returnTo.endsWith('/book') || returnTo.includes('/book?'))
+  ) {
+    return returnTo.split('?')[0]
+  }
+  return `/salon/${salonSlug}/book`
+}
 
 export async function GET(request: Request) {
   try {
@@ -9,6 +22,7 @@ export async function GET(request: Request) {
     const authority = url.searchParams.get('Authority') || url.searchParams.get('authority')
     const status = url.searchParams.get('Status') || url.searchParams.get('status')
     const slug = url.searchParams.get('slug') || ''
+    const returnTo = url.searchParams.get('returnTo')
 
     if (!authority) {
       return NextResponse.redirect(new URL('/account?payment=failed', request.url))
@@ -19,7 +33,7 @@ export async function GET(request: Request) {
       include: {
         appointment: {
           include: {
-            salon: { select: { name: true, slug: true } },
+            salon: { select: { name: true, slug: true, settings: true } },
             customer: { select: { phone: true, firstName: true, lastName: true } },
             staff: { include: { user: { select: { firstName: true, lastName: true } } } },
             services: { include: { service: { select: { name: true } } } },
@@ -33,7 +47,7 @@ export async function GET(request: Request) {
     }
 
     const salonSlug = slug || payment.appointment.salon.slug
-    const baseRedirect = `/salon/${salonSlug}/book`
+    const baseRedirect = resolveReturnBase(returnTo, salonSlug)
 
     if (status === 'NOK' || status === 'failed') {
       await prisma.payment.update({
@@ -81,7 +95,11 @@ export async function GET(request: Request) {
       }),
       prisma.appointment.update({
         where: { id: payment.appointmentId },
-        data: { status: 'CONFIRMED' },
+        data: {
+          status: shouldRequireConfirmation(parseSalonSettings(payment.appointment.salon.settings))
+            ? 'PENDING'
+            : 'CONFIRMED',
+        },
       }),
     ])
 

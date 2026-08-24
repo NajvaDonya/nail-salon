@@ -79,7 +79,6 @@ export async function POST(request: Request) {
       success: true,
       message: 'کد تایید ارسال شد',
       ...(isMockOtpMode() && { code, mock: true }),
-      ...(process.env.NODE_ENV === 'development' && !isMockOtpMode() && { code }),
     })
   } catch (error) {
     console.error('OTP request error:', error)

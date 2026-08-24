@@ -2,26 +2,15 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getCurrentUser } from '@/lib/auth'
 import { formatCustomerName } from '@/lib/customer'
-import { getManagerSalonId } from '@/lib/salon'
+import { resolveSalonAccess } from '@/lib/salon-access'
 import { persianToEnglish } from '@/lib/jalali'
 
 const MIN_QUERY_LENGTH = 2
 const MAX_RESULTS = 20
 
 async function resolveSalonId(user: { id: string; role: string; salonId?: string | null }) {
-  if (user.role === 'MANAGER') {
-    return getManagerSalonId(user.id, user.salonId)
-  }
-
-  if (user.role === 'STAFF') {
-    const staff = await prisma.staff.findFirst({
-      where: { userId: user.id },
-      select: { salonId: true },
-    })
-    return staff?.salonId ?? null
-  }
-
-  return null
+  const access = await resolveSalonAccess(user)
+  return access.salonId
 }
 
 function scoreCustomer(
@@ -49,7 +38,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'لطفا وارد شوید' }, { status: 401 })
     }
 
-    if (user.role !== 'MANAGER' && user.role !== 'STAFF') {
+    if (user.role !== 'MANAGER' && user.role !== 'STAFF' && user.role !== 'SUPER_ADMIN') {
       return NextResponse.json({ error: 'دسترسی غیرمجاز' }, { status: 403 })
     }
 

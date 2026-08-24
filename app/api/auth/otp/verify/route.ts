@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { createToken, setAuthCookieOnResponse } from '@/lib/auth'
+import { isOtpLocked } from '@/lib/otp-security'
 
 export async function POST(request: Request) {
   try {
@@ -13,16 +14,13 @@ export async function POST(request: Request) {
       )
     }
 
-    // Find valid OTP
     const otpRecord = await prisma.otpCode.findFirst({
       where: {
         phone,
-        code,
         isUsed: false,
-        expiresAt: {
-          gte: new Date(),
-        },
+        expiresAt: { gte: new Date() },
       },
+      orderBy: { createdAt: 'desc' },
     })
 
     if (!otpRecord) {
@@ -32,13 +30,21 @@ export async function POST(request: Request) {
       )
     }
 
-    // Mark OTP as used
-    await prisma.otpCode.update({
-      where: { id: otpRecord.id },
-      data: { isUsed: true },
-    })
+    if (isOtpLocked(otpRecord.attempts)) {
+      return NextResponse.json(
+        { error: 'تعداد تلاش‌ها بیش از حد مجاز است. لطفا کد جدید درخواست کنید' },
+        { status: 429 }
+      )
+    }
 
-    // Find or create user
+    if (otpRecord.code !== code) {
+      await prisma.otpCode.update({
+        where: { id: otpRecord.id },
+        data: { attempts: { increment: 1 } },
+      })
+      return NextResponse.json({ error: 'کد تایید نامعتبر است' }, { status: 401 })
+    }
+
     let user = await prisma.user.findUnique({
       where: { phone },
       select: {
@@ -62,7 +68,6 @@ export async function POST(request: Request) {
     })
 
     if (!user) {
-      // Create new customer user
       if (!firstName) {
         return NextResponse.json(
           { error: 'برای ثبت‌نام نام و نام خانوادگی الزامی است', needsRegistration: true },
@@ -97,6 +102,11 @@ export async function POST(request: Request) {
           },
         },
       })
+    } else if (user.role !== 'CUSTOMER') {
+      return NextResponse.json(
+        { error: 'این شماره برای ورود مشتری نیست' },
+        { status: 403 }
+      )
     }
 
     if (!user.isActive) {
@@ -106,7 +116,11 @@ export async function POST(request: Request) {
       )
     }
 
-    // Create token
+    await prisma.otpCode.update({
+      where: { id: otpRecord.id },
+      data: { isUsed: true },
+    })
+
     const token = await createToken({
       userId: user.id,
       phone: user.phone,
@@ -114,7 +128,6 @@ export async function POST(request: Request) {
       salonId: user.salonId || undefined,
     })
 
-    // Update last login
     await prisma.user.update({
       where: { id: user.id },
       data: { lastLoginAt: new Date() },

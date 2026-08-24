@@ -14,7 +14,7 @@ function matchesRoute(pathname: string, routes: readonly string[]) {
   return routes.some((route) => pathname === route || pathname.startsWith(`${route}/`))
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
   const token = request.cookies.get(AUTH_COOKIE_NAME)?.value
   const session = token ? await getSessionFromToken(token) : null

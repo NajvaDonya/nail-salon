@@ -293,6 +293,7 @@ export async function DELETE(
 
     const appointment = await prisma.appointment.findFirst({
       where: { id, salonId },
+      include: { payment: { select: { status: true } } },
     })
 
     if (!appointment) {
@@ -304,6 +305,18 @@ export async function DELETE(
         { error: 'نوبت انجام‌شده قابل حذف نیست' },
         { status: 400 }
       )
+    }
+
+    if (appointment.payment?.status === 'PAID') {
+      await prisma.appointment.update({
+        where: { id },
+        data: { status: 'CANCELLED', pendingApproval: 'NONE' },
+      })
+      return NextResponse.json({
+        success: true,
+        cancelled: true,
+        message: 'نوبت لغو شد',
+      })
     }
 
     await prisma.appointment.delete({ where: { id } })

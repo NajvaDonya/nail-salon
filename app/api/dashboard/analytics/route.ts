@@ -148,6 +148,7 @@ export async function GET(request: Request) {
     let completedCount = 0
     let cancelledCount = 0
     let pendingCount = 0
+    let awaitingPaymentCount = 0
     let totalAppointments = 0
 
     const bookedMinutesByWeekday = new Map<string, number>()
@@ -201,6 +202,7 @@ export async function GET(request: Request) {
       }
 
       if (apt.status === 'PENDING') pendingCount++
+      if (apt.status === 'AWAITING_PAYMENT') awaitingPaymentCount++
       if (apt.status === 'CANCELLED' || apt.status === 'NO_SHOW') cancelledCount++
       if (counted) {
         bookedMinutes += minutes
@@ -282,6 +284,7 @@ export async function GET(request: Request) {
         totalAppointments,
         completedCount,
         pendingCount,
+        awaitingPaymentCount,
         cancelledCount,
         completedRevenue,
         bookedMinutes,

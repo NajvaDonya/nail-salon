@@ -107,7 +107,11 @@ nail-salon-saa-s/
 | GET | `/api/salons/[slug]/services` | `app/api/salons/[slug]/services/route.ts` |
 | GET | `/api/salons/[slug]/staff` | `app/api/salons/[slug]/staff/route.ts` |
 | GET | `/api/salons/[slug]/slots` | `app/api/salons/[slug]/slots/route.ts` |
-| GET, POST | `/api/salons/[slug]/appointments` | `app/api/salons/[slug]/appointments/route.ts` |
+| GET | `/api/salons/[slug]/appointments` | `app/api/salons/[slug]/appointments/route.ts` (POST returns 410 — use checkout) |
+| POST | `/api/salons/[slug]/checkout` | `app/api/salons/[slug]/checkout/route.ts` |
+| GET | `/api/salons/[slug]/staff/availability` | `app/api/salons/[slug]/staff/availability/route.ts` |
+| POST | `/api/customer/appointments/[id]/resume-payment` | `app/api/customer/appointments/[id]/resume-payment/route.ts` |
+| POST | `/api/customer/reviews` | `app/api/customer/reviews/route.ts` |
 
 ---
 
@@ -229,5 +233,5 @@ These appear in navigation or auth redirects but have no route files:
 
 1. **Schema drift** — API routes and `lib/booking.ts` reference models (`Appointment`, `Review`, `OtpCode`, etc.) not yet defined in `prisma/schema.prisma`.
 2. **Mock vs live data** — Most dashboard pages use mock data; settings and public booking are wired to APIs.
-3. **No middleware** — Auth is enforced client-side via `AuthGuard`, not Next.js middleware.
+3. **Route protection** — `proxy.ts` (Next.js Proxy) protects `/dashboard`, `/staff`, `/account`, and `/auth/login`; layouts also use client-side `AuthGuard`.
 4. **Build config** — `next.config.mjs` sets `typescript.ignoreBuildErrors: true`, masking type/schema mismatches.

@@ -1,26 +1,11 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { getCurrentUser } from '@/lib/auth'
-import { getManagerSalonId } from '@/lib/salon'
+import { getCurrentUser, isManager } from '@/lib/auth'
+import { resolveSalonAccess } from '@/lib/salon-access'
 import { getStaffAvailableTimes } from '@/lib/booking'
+import { computeOccupiedMinutes } from '@/lib/booking-duration'
 import { getStaffBreakSettings, lunchDurationMinutes } from '@/lib/staff-breaks'
 
-async function resolveSalonAccess(user: { id: string; role: string; salonId?: string | null }) {
-  if (user.role === 'MANAGER') {
-    const salonId = await getManagerSalonId(user.id, user.salonId)
-    return { salonId, staffId: null as string | null }
-  }
-
-  if (user.role === 'STAFF') {
-    const staff = await prisma.staff.findFirst({
-      where: { userId: user.id, isActive: true, user: { isActive: true } },
-      select: { id: true, salonId: true },
-    })
-    return { salonId: staff?.salonId ?? null, staffId: staff?.id ?? null }
-  }
-
-  return { salonId: null, staffId: null }
-}
 
 export async function GET(request: Request) {
   try {
@@ -29,7 +14,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'لطفا وارد شوید' }, { status: 401 })
     }
 
-    if (user.role !== 'MANAGER' && user.role !== 'STAFF') {
+    if (user.role !== 'MANAGER' && user.role !== 'STAFF' && user.role !== 'SUPER_ADMIN') {
       return NextResponse.json({ error: 'دسترسی غیرمجاز' }, { status: 403 })
     }
 
@@ -46,7 +31,7 @@ export async function GET(request: Request) {
     const holdToken = url.searchParams.get('holdToken') ?? undefined
     const kind = url.searchParams.get('kind') === 'LUNCH' ? 'LUNCH' : 'SERVICE'
 
-    if (kind === 'LUNCH' && user.role === 'MANAGER') {
+    if (kind === 'LUNCH' && isManager(user.role)) {
       return NextResponse.json(
         { error: 'زمان ناهار فقط توسط خود پرسنل تنظیم و رزرو می‌شود' },
         { status: 403 }

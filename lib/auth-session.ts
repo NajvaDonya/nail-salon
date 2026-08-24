@@ -1,9 +1,6 @@
 import { jwtVerify } from 'jose'
 import type { UserRole } from './types'
-
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'your-secret-key-change-in-production'
-)
+import { getJwtSecret } from './jwt-config'
 
 export interface SessionPayload {
   userId: string
@@ -14,7 +11,7 @@ export interface SessionPayload {
 
 export async function getSessionFromToken(token: string): Promise<SessionPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET)
+    const { payload } = await jwtVerify(token, getJwtSecret())
     return payload as unknown as SessionPayload
   } catch {
     return null

@@ -15,15 +15,17 @@ export async function GET() {
     }
 
     let salonId: string | null = null
+    let ownStaffId: string | null = null
 
     if (user.role === 'MANAGER' || user.role === 'SUPER_ADMIN') {
       salonId = await getManagerSalonId(user.id, user.salonId)
     } else if (user.role === 'STAFF') {
       const staff = await prisma.staff.findFirst({
         where: { userId: user.id },
-        select: { salonId: true },
+        select: { id: true, salonId: true },
       })
       salonId = staff?.salonId || null
+      ownStaffId = staff?.id ?? null
     }
 
     if (!salonId) {
@@ -32,6 +34,8 @@ export async function GET() {
         { status: 404 }
       )
     }
+
+    const appointmentScope = ownStaffId ? { salonId, staffId: ownStaffId } : { salonId }
 
     // Get date ranges
     const now = new Date()
@@ -47,6 +51,7 @@ export async function GET() {
       monthRevenue,
       totalCustomers,
       pendingAppointments,
+      awaitingPaymentCount,
       staffCount,
       serviceCount,
       recentReviews,
@@ -55,21 +60,21 @@ export async function GET() {
       // Today's appointments
       prisma.appointment.count({
         where: {
-          salonId,
+          ...appointmentScope,
           startTime: { gte: startOfToday },
         },
       }),
       // This week's appointments
       prisma.appointment.count({
         where: {
-          salonId,
+          ...appointmentScope,
           startTime: { gte: startOfWeek },
         },
       }),
       // This month's revenue
       prisma.appointment.aggregate({
         where: {
-          salonId,
+          ...appointmentScope,
           startTime: { gte: startOfMonth },
           status: 'COMPLETED',
         },
@@ -78,14 +83,21 @@ export async function GET() {
       // Total unique customers
       prisma.appointment.groupBy({
         by: ['customerId'],
-        where: { salonId },
+        where: appointmentScope,
         _count: true,
       }),
       // Pending appointments
       prisma.appointment.count({
         where: {
-          salonId,
+          ...appointmentScope,
           status: 'PENDING',
+        },
+      }),
+      // Awaiting online payment (not counted as revenue)
+      prisma.appointment.count({
+        where: {
+          ...appointmentScope,
+          status: 'AWAITING_PAYMENT',
         },
       }),
       // Staff count
@@ -99,7 +111,8 @@ export async function GET() {
       // Recent reviews
       prisma.review.findMany({
         where: {
-          appointment: { salonId },
+          appointment: appointmentScope,
+          ...(ownStaffId ? { staffId: ownStaffId } : {}),
         },
         take: 5,
         orderBy: { createdAt: 'desc' },
@@ -119,7 +132,7 @@ export async function GET() {
       // Upcoming appointments
       prisma.appointment.findMany({
         where: {
-          salonId,
+          ...appointmentScope,
           startTime: { gte: now },
           status: { in: ['PENDING', 'CONFIRMED'] },
         },
@@ -157,7 +170,7 @@ export async function GET() {
 
         const revenue = await prisma.appointment.aggregate({
           where: {
-            salonId,
+            ...appointmentScope,
             startTime: { gte: date, lt: nextDate },
             status: 'COMPLETED',
           },
@@ -178,6 +191,7 @@ export async function GET() {
         monthRevenue: monthRevenue._sum.totalPrice || 0,
         totalCustomers: totalCustomers.length,
         pendingAppointments,
+        awaitingPaymentCount,
         staffCount,
         serviceCount,
       },

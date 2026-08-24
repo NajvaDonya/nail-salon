@@ -1,41 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
-import { getCurrentUser, isManager } from '@/lib/auth'
-import { getManagerSalonId } from '@/lib/salon'
-import { z } from 'zod'
-
-const createReviewSchema = z.object({
-  appointmentId: z.string(),
-  rating: z.number().min(1).max(5),
-  comment: z.string().optional(),
-})
-
-async function resolveSalonContext(user: {
-  id: string
-  role: string
-  salonId?: string | null
-}) {
-  if (isManager(user.role)) {
-    return {
-      salonId: await getManagerSalonId(user.id, user.salonId),
-      staffId: null as string | null,
-    }
-  }
-
-  if (user.role === 'STAFF') {
-    const staff = await prisma.staff.findFirst({
-      where: { userId: user.id },
-      select: { id: true, salonId: true },
-    })
-
-    return {
-      salonId: staff?.salonId ?? null,
-      staffId: staff?.id ?? null,
-    }
-  }
-
-  return { salonId: null, staffId: null }
-}
+import { getCurrentUser } from '@/lib/auth'
+import { resolveSalonAccess } from '@/lib/salon-access'
 
 export async function GET(request: Request) {
   try {
@@ -52,7 +18,7 @@ export async function GET(request: Request) {
     const staffId = url.searchParams.get('staffId')
     const rating = url.searchParams.get('rating')
 
-    const { salonId, staffId: specificStaffId } = await resolveSalonContext(user)
+    const { salonId, staffId: specificStaffId } = await resolveSalonAccess(user)
 
     if (!salonId) {
       return NextResponse.json(
@@ -149,77 +115,12 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
-  try {
-    const body = await request.json()
-    const validation = createReviewSchema.safeParse(body)
-
-    if (!validation.success) {
-      return NextResponse.json(
-        { error: 'اطلاعات نامعتبر', details: validation.error.errors },
-        { status: 400 }
-      )
-    }
-
-    const { appointmentId, rating, comment } = validation.data
-
-    // Get appointment details
-    const appointment = await prisma.appointment.findUnique({
-      where: { id: appointmentId },
-      select: {
-        id: true,
-        customerId: true,
-        staffId: true,
-        status: true,
-      },
-    })
-
-    if (!appointment) {
-      return NextResponse.json(
-        { error: 'نوبت یافت نشد' },
-        { status: 404 }
-      )
-    }
-
-    if (appointment.status !== 'COMPLETED') {
-      return NextResponse.json(
-        { error: 'فقط برای نوبت‌های انجام شده می‌توانید نظر ثبت کنید' },
-        { status: 400 }
-      )
-    }
-
-    // Check if review already exists
-    const existingReview = await prisma.review.findFirst({
-      where: { appointmentId },
-    })
-
-    if (existingReview) {
-      return NextResponse.json(
-        { error: 'قبلا برای این نوبت نظر ثبت شده است' },
-        { status: 400 }
-      )
-    }
-
-    // Create review
-    const review = await prisma.review.create({
-      data: {
-        appointmentId,
-        customerId: appointment.customerId,
-        staffId: appointment.staffId,
-        rating,
-        comment,
-      },
-    })
-
-    return NextResponse.json({
-      success: true,
-      review,
-    })
-  } catch (error) {
-    console.error('Error creating review:', error)
-    return NextResponse.json(
-      { error: 'خطا در ثبت نظر' },
-      { status: 500 }
-    )
-  }
+export async function POST() {
+  return NextResponse.json(
+    {
+      error: 'ثبت نظر فقط از طریق حساب مشتری امکان‌پذیر است',
+      useEndpoint: '/api/customer/reviews',
+    },
+    { status: 405 }
+  )
 }

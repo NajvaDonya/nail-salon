@@ -1,0 +1,1 @@
+-- Baseline schema (applied via db push before formal migrations)

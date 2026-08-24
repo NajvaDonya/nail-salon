@@ -2,30 +2,15 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { getCurrentUser } from '@/lib/auth'
-import { getManagerSalonId } from '@/lib/salon'
+import { resolveSalonAccess } from '@/lib/salon-access'
 import {
   SlotHoldError,
   createOrRefreshSlotHold,
   releaseHoldsByToken,
 } from '@/lib/slot-hold'
 import { getStaffBreakSettings, lunchDurationMinutes } from '@/lib/staff-breaks'
-
-async function resolveSalonAccess(user: { id: string; role: string; salonId?: string | null }) {
-  if (user.role === 'MANAGER') {
-    const salonId = await getManagerSalonId(user.id, user.salonId)
-    return { salonId, staffId: null as string | null }
-  }
-
-  if (user.role === 'STAFF') {
-    const staff = await prisma.staff.findFirst({
-      where: { userId: user.id, isActive: true, user: { isActive: true } },
-      select: { id: true, salonId: true },
-    })
-    return { salonId: staff?.salonId ?? null, staffId: staff?.id ?? null }
-  }
-
-  return { salonId: null, staffId: null }
-}
+import { computeOccupiedMinutes } from '@/lib/booking-duration'
+import { isManager } from '@/lib/auth'
 
 const holdSchema = z.object({
   holdToken: z.string().min(1),
@@ -43,7 +28,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'لطفا وارد شوید' }, { status: 401 })
     }
 
-    if (user.role !== 'MANAGER' && user.role !== 'STAFF') {
+    if (user.role !== 'MANAGER' && user.role !== 'STAFF' && user.role !== 'SUPER_ADMIN') {
       return NextResponse.json({ error: 'دسترسی غیرمجاز' }, { status: 403 })
     }
 
@@ -60,7 +45,7 @@ export async function POST(request: Request) {
 
     const { holdToken, date, startTime, kind, serviceIds, staffId: requestedStaffId } = validation.data
 
-    if (kind === 'LUNCH' && user.role === 'MANAGER') {
+    if (kind === 'LUNCH' && isManager(user.role)) {
       return NextResponse.json(
         { error: 'زمان ناهار فقط توسط خود پرسنل تنظیم و رزرو می‌شود' },
         { status: 403 }
@@ -94,12 +79,12 @@ export async function POST(request: Request) {
       }
       const services = await prisma.service.findMany({
         where: { id: { in: serviceIds }, salonId, isActive: true },
-        select: { duration: true },
+        select: { duration: true, bufferTime: true },
       })
       if (services.length !== serviceIds.length) {
         return NextResponse.json({ error: 'خدمات انتخاب‌شده معتبر نیستند' }, { status: 400 })
       }
-      durationMinutes = services.reduce((sum, service) => sum + service.duration, 0)
+      durationMinutes = computeOccupiedMinutes(services)
     }
 
     await createOrRefreshSlotHold({

@@ -8,7 +8,11 @@ const updateServiceSchema = z.object({
   name: z.string().min(2),
   price: z.number().min(0),
   duration: z.number().min(5),
+  depositAmount: z.number().min(0).optional(),
   categoryId: z.string().min(1),
+  kind: z.enum(['BASE', 'ADDON']).optional(),
+  allowQuantity: z.boolean().optional(),
+  maxQuantity: z.number().int().min(1).nullable().optional(),
 })
 
 function isServiceInUse(counts: { appointmentServices: number; staffServices: number }) {
@@ -78,6 +82,13 @@ export async function PATCH(
         name: validation.data.name,
         price: validation.data.price,
         duration: validation.data.duration,
+        depositAmount: validation.data.depositAmount ?? service.depositAmount,
+        kind: validation.data.kind ?? service.kind,
+        allowQuantity: validation.data.allowQuantity ?? service.allowQuantity,
+        maxQuantity:
+          validation.data.maxQuantity === null
+            ? null
+            : validation.data.maxQuantity ?? service.maxQuantity,
         category: category.name,
       },
     })
@@ -90,6 +101,10 @@ export async function PATCH(
         price: updated.price,
         discountPrice: updated.discountPrice,
         duration: updated.duration,
+        depositAmount: updated.depositAmount,
+        kind: updated.kind,
+        allowQuantity: updated.allowQuantity,
+        maxQuantity: updated.maxQuantity,
         categoryId: category.id,
         category: category.name,
         isActive: updated.isActive,

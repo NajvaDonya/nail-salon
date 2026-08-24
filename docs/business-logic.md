@@ -112,7 +112,7 @@ Two login paths exist at `/auth/login`:
 
 - `GET /api/auth/me` — returns current user from JWT + DB lookup.
 - `POST /api/auth/logout` — clears session cookie.
-- Client-side `AuthGuard` wraps dashboard/staff layouts (no Next.js middleware).
+- `proxy.ts` protects dashboard/staff/account routes; client-side `AuthGuard` also wraps those layouts.
 
 ---
 
@@ -120,21 +120,20 @@ Two login paths exist at `/auth/login`:
 
 ### Workflow 1: Customer Online Booking
 
-**Entry:** `/salon/[slug]/book`  
+**Entry:** `/` or `/salon/[slug]/book`  
 **Component:** `components/booking/booking-flow.tsx`
 
 ```
-Step 1: Select service(s)
+Step 1: Select date (Jalali calendar)
+Step 2: Select service(s)
     ↓ GET /api/salons/[slug]/services
-Step 2: Select staff member
-    ↓ GET /api/salons/[slug]/staff?serviceIds=...
-Step 3: Select date (Jalali calendar)
-    ↓
-Step 4: Select time slot
-    ↓ GET /api/salons/[slug]/slots?staffId&date&duration
-Step 5: Enter name + phone, confirm
-    ↓ POST /api/salons/[slug]/appointments
-Confirmation + tracking code + SMS
+Step 3: Select staff + free time
+    ↓ GET /api/salons/[slug]/staff/availability
+Step 4: Confirm time (slot hold)
+    ↓ POST /api/salons/[slug]/slots/hold
+Step 5: SMS OTP login + online payment
+    ↓ POST /api/auth/otp/* then POST /api/salons/[slug]/checkout
+    ↓ Payment callback → CONFIRMED + SMS
 ```
 
 **Business rules:**
@@ -142,7 +141,9 @@ Confirmation + tracking code + SMS
 - Only **active** services are shown.
 - Staff list is filtered to those who can perform the selected service(s) via `StaffService`.
 - Slots are computed by the booking engine (see below).
-- On submit: find or create customer by phone, create appointment, generate tracking code, send confirmation SMS.
+- Checkout requires a valid slot hold and CUSTOMER role; creates `AWAITING_PAYMENT` then redirects to payment.
+- Abandoned unpaid appointments expire after 30 minutes and free the slot.
+- Legacy `POST /api/salons/[slug]/appointments` is disabled (410).
 
 ---
 
@@ -158,7 +159,7 @@ The booking engine computes available time slots for a given salon, service, sta
 2. **Load working hours** for the staff member on that day of week.
 3. **Load service duration** + salon buffer time from settings.
 4. **Generate candidate slots** in 30-minute increments within working hours.
-5. **Remove slots that overlap** existing appointments with status `PENDING`, `CONFIRMED`, or `IN_PROGRESS`.
+5. **Remove slots that overlap** existing appointments with status `PENDING`, `CONFIRMED`, `IN_PROGRESS`, or fresh `AWAITING_PAYMENT` (expired unpaid bookings are auto-cancelled).
 6. **Return available slots**; if no staff specified, merge availability across all qualified staff.
 
 **Conflict detection:** Two intervals overlap if `startA < endB && endA > startB`.

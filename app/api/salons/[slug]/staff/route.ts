@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
+import { computeQualifiedStaffIds } from '@/lib/booking-quote'
 
 export async function GET(
   request: Request,
@@ -9,6 +10,7 @@ export async function GET(
     const { slug } = await params
     const url = new URL(request.url)
     const serviceIds = url.searchParams.get('services')?.split(',').filter(Boolean) || []
+    const qualifiedOnly = url.searchParams.get('qualifiedOnly') === 'true'
 
     const salon = await prisma.salon.findUnique({
       where: { slug },
@@ -22,14 +24,20 @@ export async function GET(
       )
     }
 
-    // Find staff that can perform the selected services
+    let staffIdsFilter: string[] | undefined
+    if (serviceIds.length > 0 && qualifiedOnly) {
+      staffIdsFilter = await computeQualifiedStaffIds(prisma, salon.id, serviceIds)
+    }
+
     const whereClause: Record<string, unknown> = {
       salonId: salon.id,
       isActive: true,
       user: { isActive: true },
     }
 
-    if (serviceIds.length > 0) {
+    if (staffIdsFilter) {
+      whereClause.id = { in: staffIdsFilter }
+    } else if (serviceIds.length > 0) {
       whereClause.services = {
         some: {
           serviceId: { in: serviceIds },
