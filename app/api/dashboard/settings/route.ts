@@ -14,6 +14,7 @@ function canManageSettings(role: UserRole) {
 
 const appearanceSchema = z.object({
   hue: z.number().min(0).max(360).optional(),
+  colorIntensity: z.number().min(0).max(100).optional(),
   // Accept legacy theme for old clients; mergeSalonSettings converts to hue
   theme: z.enum(['violet', 'rose', 'teal', 'amber']).optional(),
   welcomeBadge: z.string().max(80).optional(),

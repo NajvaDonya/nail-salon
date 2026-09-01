@@ -7,15 +7,16 @@ import { englishToPersian } from '@/lib/jalali'
 
 interface HueColorSliderProps {
   value: number
+  colorIntensity?: number
   onChange: (hue: number) => void
 }
 
 const RAINBOW_GRADIENT =
   'linear-gradient(to right, hsl(0 90% 55%), hsl(60 90% 50%), hsl(120 80% 45%), hsl(180 80% 45%), hsl(240 80% 55%), hsl(300 80% 55%), hsl(360 90% 55%))'
 
-export function HueColorSlider({ value, onChange }: HueColorSliderProps) {
+export function HueColorSlider({ value, colorIntensity = 50, onChange }: HueColorSliderProps) {
   const hue = Number.isFinite(value) ? Math.min(360, Math.max(0, Math.round(value))) : 300
-  const vars = buildThemeVarsFromHue(hue)
+  const vars = buildThemeVarsFromHue(hue, colorIntensity)
 
   return (
     <div className="space-y-4">
