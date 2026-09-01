@@ -28,7 +28,7 @@ import {
   extractSalonAppearance,
   appearanceStyleVars,
 } from '@/lib/salon-appearance'
-import { HueColorSlider } from '@/components/salon'
+import { HueColorSlider, ColorIntensitySlider } from '@/components/salon'
 
 const fetcher = async (url: string) => {
   const res = await fetch(url, { credentials: 'include', cache: 'no-store' })
@@ -458,10 +458,15 @@ export default function SettingsPage() {
                   رنگ دلخواه خود را از طیف رنگی انتخاب کنید — پس‌زمینه، بنر و جزئیات صفحه رزرو به‌صورت خودکار هماهنگ می‌شوند
                 </CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-8">
                 <HueColorSlider
                   value={appearance.hue}
+                  colorIntensity={appearance.colorIntensity}
                   onChange={(hue) => updateAppearance('hue', hue)}
+                />
+                <ColorIntensitySlider
+                  value={appearance.colorIntensity}
+                  onChange={(colorIntensity) => updateAppearance('colorIntensity', colorIntensity)}
                 />
               </CardContent>
             </Card>
