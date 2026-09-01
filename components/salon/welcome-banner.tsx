@@ -28,7 +28,7 @@ export function WelcomeBanner({
       <div className="absolute top-8 right-1/4 text-lg opacity-40">⭐</div>
 
       <div className="relative flex flex-col md:flex-row items-center gap-6 md:gap-8">
-        {showCharacter && <NailArtistCharacter size="xl" priority animate />}
+        {showCharacter && <NailArtistCharacter size="xl" pose="atDesk" priority animate />}
 
         <div className="flex-1 text-center md:text-right space-y-3">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/25 text-white text-xs font-semibold backdrop-blur-sm">
