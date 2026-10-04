@@ -1,6 +1,7 @@
 import { PrismaClient, Prisma } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 import { buildDefaultCategories } from '../lib/salon'
+import { ensureManagerStaffProfile } from '../lib/manager-staff'
 
 const prisma = new PrismaClient()
 
@@ -116,6 +117,14 @@ async function main() {
   }
 
   console.log('Created salon working hours')
+
+  await ensureManagerStaffProfile(manager.id, salon.id, {
+    specialties: ['مدیریت سالن', 'ناخن'],
+    syncWorkingHoursFromSalon: true,
+  })
+
+  console.log('Linked manager user to bookable staff profile')
+
   console.log('Seed completed successfully!')
   console.log('========================================')
   console.log('\nTest Credentials:')

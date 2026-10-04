@@ -104,7 +104,7 @@ export async function GET(request: Request) {
 
     const salonHours = await loadSalonHours(salonId)
 
-    if (user.role === 'STAFF') {
+    if (user.role === 'STAFF' || (isManager(user.role) && ownStaffId)) {
       if (!ownStaffId) {
         return NextResponse.json({ error: 'پرسنل یافت نشد' }, { status: 404 })
       }
@@ -157,7 +157,9 @@ export async function PATCH(request: Request) {
     const { scope, salonHours, staffHours, staffBreak } = validation.data
 
     if (scope === 'staff') {
-      if (user.role !== 'STAFF') {
+      const canEditOwnStaffHours =
+        user.role === 'STAFF' || (isManager(user.role) && ownStaffId)
+      if (!canEditOwnStaffHours) {
         return NextResponse.json(
           { error: 'هر پرسنل باید برنامه کاری خود را شخصاً تنظیم کند' },
           { status: 403 }

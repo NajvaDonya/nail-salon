@@ -10,6 +10,7 @@ import {
   type SalonPaymentInfo,
 } from '@/lib/salon-settings'
 import type { Appointment, Payment, Prisma, Salon, Service, Staff, User } from '@prisma/client'
+import { ensureManagerStaffProfile } from '@/lib/manager-staff'
 
 export const MANAGER_PASSWORD = 'test1234'
 
@@ -135,6 +136,62 @@ export async function seedManager(
       ...overrides,
     },
   })
+}
+
+export interface SeededManagerStaff {
+  manager: User
+  staff: Staff
+  service: Service
+}
+
+/** Manager (MANAGER role) with a bookable Staff profile, hours, and one linked service. */
+export async function seedManagerWithStaffProfile(
+  salonId: string,
+  options: {
+    serviceName?: string
+    duration?: number
+    depositAmount?: number
+    staffActive?: boolean
+  } = {}
+): Promise<SeededManagerStaff> {
+  const manager = await seedManager(salonId)
+
+  for (const dayOfWeek of WEEK_DAYS) {
+    await prisma.workingHour.upsert({
+      where: { salonId_dayOfWeek: { salonId, dayOfWeek } },
+      update: { openTime: '09:00', closeTime: '21:00', isClosed: false },
+      create: {
+        salonId,
+        dayOfWeek,
+        openTime: '09:00',
+        closeTime: '21:00',
+        isClosed: false,
+      },
+    })
+  }
+
+  const service = await prisma.service.create({
+    data: {
+      salonId,
+      name: options.serviceName ?? 'خدمت مدیر',
+      duration: options.duration ?? 60,
+      price: 400_000,
+      depositAmount: options.depositAmount ?? 80_000,
+      category: 'ناخن',
+      bufferTime: 0,
+      kind: 'BASE',
+      isActive: true,
+    },
+  })
+
+  const staff = await ensureManagerStaffProfile(manager.id, salonId, {
+    specialties: ['مدیریت'],
+    serviceIds: [service.id],
+    isActive: options.staffActive ?? true,
+    syncWorkingHoursFromSalon: true,
+  })
+
+  return { manager, staff, service }
 }
 
 export async function seedCustomer(overrides: SeedUserOverrides = {}): Promise<User> {

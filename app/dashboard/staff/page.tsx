@@ -52,6 +52,7 @@ interface StaffMember {
   specialties: string[] | null
   services?: StaffService[]
   isActive: boolean
+  isManagerAccount?: boolean
   appointmentCount: number
   averageRating: number
 }
@@ -607,8 +608,11 @@ export default function StaffPage() {
                         </AvatarFallback>
                       </Avatar>
                       <div>
-                        <CardTitle className="text-base">
+                        <CardTitle className="text-base flex flex-wrap items-center gap-2">
                           {member.user.firstName} {member.user.lastName}
+                          {member.isManagerAccount ? (
+                            <Badge variant="secondary">حساب مدیر سالن</Badge>
+                          ) : null}
                         </CardTitle>
                         <CardDescription className="flex items-center gap-1">
                           <Star className="w-3 h-3 fill-warning text-warning" />

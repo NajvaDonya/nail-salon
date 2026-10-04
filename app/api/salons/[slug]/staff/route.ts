@@ -53,6 +53,7 @@ export async function GET(
             firstName: true,
             lastName: true,
             avatar: true,
+            role: true,
           },
         },
         reviews: {
@@ -66,6 +67,7 @@ export async function GET(
     const staffWithRating = staff.map(member => ({
       id: member.id,
       user: member.user,
+      isSalonManager: member.user.role === 'MANAGER',
       specialties: member.specialties as string[],
       averageRating: member.reviews.length > 0
         ? member.reviews.reduce((sum, r) => sum + r.rating, 0) / member.reviews.length

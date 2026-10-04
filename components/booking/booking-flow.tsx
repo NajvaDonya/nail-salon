@@ -51,7 +51,8 @@ interface Service {
 
 interface Staff {
   id: string
-  user: { firstName: string; lastName: string; avatar: string | null }
+  user: { firstName: string; lastName: string; avatar: string | null; role?: string }
+  isSalonManager?: boolean
   specialties: string[]
   averageRating: number
 }
@@ -672,6 +673,9 @@ export function BookingFlow({
                       {staffList.map((member) => (
                         <SelectItem key={member.id} value={member.id}>
                           {member.user.firstName} {member.user.lastName}
+                          {member.isSalonManager || member.user.role === 'MANAGER'
+                            ? ' — مدیر سالن'
+                            : ''}
                           {member.averageRating > 0 ? ` — ★ ${member.averageRating.toFixed(1)}` : ''}
                         </SelectItem>
                       ))}

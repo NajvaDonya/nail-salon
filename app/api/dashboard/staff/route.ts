@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getCurrentUser, isManager } from '@/lib/auth'
 import { getManagerSalonId, validateStaffSpecialties } from '@/lib/salon'
+import { ensureManagerStaffProfile } from '@/lib/manager-staff'
 import { z } from 'zod'
 import bcrypt from 'bcryptjs'
 
@@ -56,6 +57,7 @@ export async function GET(request: Request) {
             lastName: true,
             avatar: true,
             isActive: true,
+            role: true,
           },
         },
         services: {
@@ -78,6 +80,7 @@ export async function GET(request: Request) {
     const staffWithStats = staff.map(member => ({
       id: member.id,
       user: member.user,
+      isManagerAccount: member.user.role === 'MANAGER',
       specialties: member.specialties,
       services: member.services.map(s => s.service),
       isActive: member.isActive && member.user.isActive,
@@ -143,9 +146,9 @@ export async function POST(request: Request) {
     })
 
     if (staffUser) {
-      if (staffUser.role === 'MANAGER' || staffUser.role === 'SUPER_ADMIN') {
+      if (staffUser.role === 'SUPER_ADMIN') {
         return NextResponse.json(
-          { error: 'نمی‌توانید مدیر را به عنوان پرسنل اضافه کنید' },
+          { error: 'نمی‌توانید ادمین سیستم را به عنوان پرسنل اضافه کنید' },
           { status: 400 }
         )
       }
@@ -159,6 +162,52 @@ export async function POST(request: Request) {
           { error: 'این کاربر قبلا به عنوان کارمند اضافه شده است' },
           { status: 400 }
         )
+      }
+
+      if (staffUser.role === 'MANAGER') {
+        if (staffUser.salonId !== salonId) {
+          return NextResponse.json(
+            { error: 'این مدیر به سالن دیگری تعلق دارد' },
+            { status: 400 }
+          )
+        }
+
+        await prisma.user.update({
+          where: { id: staffUser.id },
+          data: {
+            firstName,
+            lastName,
+            name: `${firstName} ${lastName}`.trim(),
+            ...(password ? { passwordHash: await bcrypt.hash(password, 10) } : {}),
+          },
+        })
+
+        const managerStaff = await ensureManagerStaffProfile(staffUser.id, salonId, {
+          specialties: validatedSpecialties,
+          serviceIds,
+          syncWorkingHoursFromSalon: true,
+        })
+
+        const linked = await prisma.staff.findUniqueOrThrow({
+          where: { id: managerStaff.id },
+          include: {
+            user: {
+              select: { id: true, phone: true, firstName: true, lastName: true, role: true },
+            },
+            services: { include: { service: { select: { id: true, name: true } } } },
+          },
+        })
+
+        return NextResponse.json({
+          success: true,
+          staff: {
+            id: linked.id,
+            user: linked.user,
+            specialties: linked.specialties,
+            services: linked.services.map((s) => s.service),
+            isManagerAccount: true,
+          },
+        })
       }
 
       staffUser = await prisma.user.update({

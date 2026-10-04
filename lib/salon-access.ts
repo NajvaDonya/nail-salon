@@ -15,7 +15,14 @@ export async function resolveSalonAccess(user: {
 }): Promise<SalonAccessContext> {
   if (isManager(user.role as UserRole)) {
     const salonId = await getManagerSalonId(user.id, user.salonId)
-    return { salonId, staffId: null }
+    if (!salonId) {
+      return { salonId: null, staffId: null }
+    }
+    const ownStaff = await prisma.staff.findFirst({
+      where: { userId: user.id, salonId },
+      select: { id: true },
+    })
+    return { salonId, staffId: ownStaff?.id ?? null }
   }
 
   if (user.role === 'STAFF') {

@@ -90,7 +90,9 @@ export async function PATCH(
     }
     if (phone !== undefined) userUpdate.phone = phone
     if (password) userUpdate.passwordHash = await bcrypt.hash(password, 10)
-    if (isActive !== undefined) userUpdate.isActive = isActive
+    if (isActive !== undefined && staff.user.role !== 'MANAGER') {
+      userUpdate.isActive = isActive
+    }
 
     const staffUpdate: {
       specialties?: string[]
@@ -181,6 +183,13 @@ export async function DELETE(
 
     if (!staff) {
       return NextResponse.json({ error: 'پرسنل یافت نشد' }, { status: 404 })
+    }
+
+    if (staff.user.role === 'MANAGER') {
+      return NextResponse.json(
+        { error: 'پروفایل رزرو مدیر سالن قابل حذف نیست؛ می‌توانید آن را غیرفعال کنید.' },
+        { status: 400 }
+      )
     }
 
     if (staff._count.appointments > 0) {
