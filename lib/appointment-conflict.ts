@@ -43,9 +43,15 @@ export async function findConflictingAppointment(
 ) {
   const { staffId, startDateTime, endDateTime, restMinutes = 0, excludeAppointmentId } = params
 
+  const dayStart = new Date(startDateTime)
+  dayStart.setHours(0, 0, 0, 0)
+  const dayEnd = new Date(dayStart)
+  dayEnd.setDate(dayEnd.getDate() + 1)
+
   const appointments = await client.appointment.findMany({
     where: {
       staffId,
+      date: { gte: dayStart, lt: dayEnd },
       ...(excludeAppointmentId ? { id: { not: excludeAppointmentId } } : {}),
       status: { in: [...BLOCKING_STATUSES] },
     },

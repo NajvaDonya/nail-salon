@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { CardPaymentBox, type CardPaymentData } from '@/components/booking'
 import { formatJalaliDate, formatJalaliTime, formatPersianPrice } from '@/lib/jalali'
 import { PERSIAN_STATUS, STATUS_COLORS } from '@/lib/types'
 import type { AppointmentStatus } from '@/lib/types'
@@ -27,9 +28,54 @@ interface Appointment {
   salon: { name: string; slug: string }
   staff: { name: string }
   services: { name: string; duration: number }[]
-  payment: { status: string; paidAt: string | null } | null
+  payment: {
+    status: string
+    paidAt: string | null
+    submittedAt: string | null
+    rejectionReason: string | null
+  } | null
   hasReview: boolean
   reviewRating: number | null
+}
+
+function AppointmentPaymentPanel({
+  appointmentId,
+  trackingCode,
+  onSubmitted,
+}: {
+  appointmentId: string
+  trackingCode: string | null
+  onSubmitted: () => void
+}) {
+  const { data, error, isLoading } = useSWR<{ payment: CardPaymentData }>(
+    `/api/customer/appointments/${appointmentId}/payment`,
+    fetcher
+  )
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center py-6">
+        <Loader2 className="w-6 h-6 animate-spin text-primary" />
+      </div>
+    )
+  }
+
+  if (error || !data) {
+    return (
+      <p className="text-sm text-destructive">
+        {error instanceof Error ? error.message : 'خطا در دریافت اطلاعات پرداخت'}
+      </p>
+    )
+  }
+
+  return (
+    <CardPaymentBox
+      appointmentId={appointmentId}
+      payment={data.payment}
+      trackingCode={trackingCode}
+      onSubmitted={onSubmitted}
+    />
+  )
 }
 
 const fetcher = async (url: string) => {
@@ -45,8 +91,7 @@ export default function AccountPage() {
     '/api/customer/appointments',
     fetcher
   )
-  const [resumeLoadingId, setResumeLoadingId] = useState<string | null>(null)
-  const [resumeError, setResumeError] = useState('')
+  const [openPaymentId, setOpenPaymentId] = useState<string | null>(null)
   const [reviewingId, setReviewingId] = useState<string | null>(null)
   const [rating, setRating] = useState(5)
   const [comment, setComment] = useState('')
@@ -56,28 +101,6 @@ export default function AccountPage() {
   const [cancelError, setCancelError] = useState('')
 
   const appointments = data?.appointments ?? []
-
-  const handleResumePayment = async (appointmentId: string) => {
-    setResumeError('')
-    setResumeLoadingId(appointmentId)
-    try {
-      const res = await fetch(`/api/customer/appointments/${appointmentId}/resume-payment`, {
-        method: 'POST',
-        credentials: 'include',
-      })
-      const json = await res.json()
-      if (!res.ok) {
-        if (json.expired) {
-          await mutate()
-        }
-        throw new Error(json.error || 'خطا در ادامه پرداخت')
-      }
-      window.location.href = json.paymentUrl
-    } catch (err) {
-      setResumeError(err instanceof Error ? err.message : 'خطا در ادامه پرداخت')
-      setResumeLoadingId(null)
-    }
-  }
 
   const handleCancelAppointment = async (appointmentId: string) => {
     setCancelError('')
@@ -147,17 +170,6 @@ export default function AccountPage() {
         {cancelError && (
           <Card className="p-4 border-destructive/40">
             <p className="text-sm text-destructive">{cancelError}</p>
-          </Card>
-        )}
-
-        {resumeError && (
-          <Card className="p-4 border-destructive/40">
-            <p className="text-sm text-destructive">{resumeError}</p>
-            {resumeError.includes('دوباره رزرو') && (
-              <Button asChild size="sm" className="mt-3">
-                <Link href="/">رزرو نوبت جدید</Link>
-              </Button>
-            )}
           </Card>
         )}
 
@@ -251,20 +263,33 @@ export default function AccountPage() {
                 )}
 
                 {apt.status === 'AWAITING_PAYMENT' && (
-                  <Button
-                    size="sm"
-                    disabled={resumeLoadingId === apt.id}
-                    onClick={() => handleResumePayment(apt.id)}
-                  >
-                    {resumeLoadingId === apt.id ? (
-                      <>
-                        <Loader2 className="w-4 h-4 ml-2 animate-spin" />
-                        در حال انتقال...
-                      </>
-                    ) : (
-                      'ادامه پرداخت'
+                  <>
+                    <Button
+                      size="sm"
+                      variant={openPaymentId === apt.id ? 'ghost' : 'default'}
+                      onClick={() =>
+                        setOpenPaymentId((current) => (current === apt.id ? null : apt.id))
+                      }
+                    >
+                      {openPaymentId === apt.id ? 'بستن اطلاعات پرداخت' : 'اطلاعات پرداخت و رسید'}
+                    </Button>
+                    {openPaymentId === apt.id && (
+                      <AppointmentPaymentPanel
+                        appointmentId={apt.id}
+                        trackingCode={apt.trackingCode}
+                        onSubmitted={() => void mutate()}
+                      />
                     )}
-                  </Button>
+                  </>
+                )}
+
+                {apt.payment?.status === 'REJECTED' && apt.payment.rejectionReason && (
+                  <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-3">
+                    <p className="text-sm font-semibold text-destructive">پرداخت رد شد</p>
+                    <p className="text-sm text-muted-foreground">
+                      دلیل: {apt.payment.rejectionReason}
+                    </p>
+                  </div>
                 )}
 
                 {apt.status === 'COMPLETED' && !apt.hasReview && reviewingId !== apt.id && (

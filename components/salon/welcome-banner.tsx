@@ -14,7 +14,7 @@ interface WelcomeBannerProps {
 export function WelcomeBanner({
   salonName,
   subtitle,
-  welcomeBadge = 'خوش آمدید به فیر سالن',
+  welcomeBadge,
   showCharacter = true,
 }: WelcomeBannerProps) {
   return (
@@ -28,19 +28,25 @@ export function WelcomeBanner({
       <div className="absolute top-8 right-1/4 text-lg opacity-40">⭐</div>
 
       <div className="relative flex flex-col md:flex-row items-center gap-6 md:gap-8">
-        {showCharacter && <NailArtistCharacter size="xl" pose="atDesk" priority animate />}
+        {showCharacter && (
+          <NailArtistCharacter size="xl" pose="atDesk" priority animate salonName={salonName} />
+        )}
 
         <div className="flex-1 text-center md:text-right space-y-3">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/25 text-white text-xs font-semibold backdrop-blur-sm">
-            <Sparkles className="w-3.5 h-3.5" />
-            {welcomeBadge}
-          </div>
+          {welcomeBadge?.trim() ? (
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/25 text-white text-xs font-semibold backdrop-blur-sm">
+              <Sparkles className="w-3.5 h-3.5" />
+              {welcomeBadge.trim()}
+            </div>
+          ) : null}
           <h2 className="text-2xl md:text-3xl font-bold text-white leading-tight">
-            {salonName ? `رزرو نوبت — ${salonName}` : 'رزرو نوبت آنلاین'}
+            {salonName?.trim() ? `رزرو نوبت — ${salonName.trim()}` : 'رزرو نوبت آنلاین'}
           </h2>
-          <p className="text-white/85 text-sm md:text-base max-w-md mx-auto md:mx-0 md:mr-0">
-            {subtitle || 'تاریخ، خدمات و زمان دلخواهت رو انتخاب کن — ما آماده‌ایم ناخن‌هات رو بدرخشونیم!'}
-          </p>
+          {subtitle?.trim() ? (
+            <p className="text-white/85 text-sm md:text-base max-w-md mx-auto md:mx-0 md:mr-0">
+              {subtitle.trim()}
+            </p>
+          ) : null}
         </div>
       </div>
     </motion.div>

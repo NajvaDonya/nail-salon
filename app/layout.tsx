@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { Vazirmatn } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { Providers } from '@/components/providers'
+import { getPrimarySalonName } from '@/lib/salon'
 import './globals.css'
 
 const vazirmatn = Vazirmatn({ 
@@ -10,32 +11,35 @@ const vazirmatn = Vazirmatn({
   display: 'swap',
 })
 
-export const metadata: Metadata = {
-  title: {
-    default: 'فیر سالن - سامانه نوبت‌دهی آنلاین',
-    template: '%s | فیر سالن',
-  },
-  description: 'سامانه جامع مدیریت سالن‌های زیبایی - نوبت‌دهی آنلاین، مدیریت پرسنل، خدمات و نظرات مشتریان',
-  keywords: ['سالن زیبایی', 'نوبت‌دهی آنلاین', 'آرایشگاه', 'رزرو آنلاین', 'مدیریت سالن'],
-  authors: [{ name: 'Fair Salon' }],
-  creator: 'Fair Salon',
-  icons: {
-    icon: [
-      {
-        url: '/icon-light-32x32.png',
-        media: '(prefers-color-scheme: light)',
-      },
-      {
-        url: '/icon-dark-32x32.png',
-        media: '(prefers-color-scheme: dark)',
-      },
-      {
-        url: '/icon.svg',
-        type: 'image/svg+xml',
-      },
-    ],
-    apple: '/apple-icon.png',
-  },
+export async function generateMetadata(): Promise<Metadata> {
+  const salonName = (await getPrimarySalonName()) || 'سالن'
+  return {
+    title: {
+      default: `${salonName} - سامانه نوبت‌دهی آنلاین`,
+      template: `%s | ${salonName}`,
+    },
+    description: 'سامانه جامع مدیریت سالن‌های زیبایی - نوبت‌دهی آنلاین، مدیریت پرسنل، خدمات و نظرات مشتریان',
+    keywords: ['سالن زیبایی', 'نوبت‌دهی آنلاین', 'آرایشگاه', 'رزرو آنلاین', 'مدیریت سالن'],
+    authors: [{ name: salonName }],
+    creator: salonName,
+    icons: {
+      icon: [
+        {
+          url: '/icon-light-32x32.png',
+          media: '(prefers-color-scheme: light)',
+        },
+        {
+          url: '/icon-dark-32x32.png',
+          media: '(prefers-color-scheme: dark)',
+        },
+        {
+          url: '/icon.svg',
+          type: 'image/svg+xml',
+        },
+      ],
+      apple: '/apple-icon.png',
+    },
+  }
 }
 
 export const viewport: Viewport = {

@@ -63,7 +63,7 @@ export function StaffLayout({ children }: StaffLayoutProps) {
         
         <Link href="/staff" className="flex items-center gap-2">
           <Scissors className="w-6 h-6 text-primary" />
-          <span className="font-bold text-lg">پنل کارمند</span>
+          <span className="font-bold text-lg">{user?.salon?.name}</span>
         </Link>
 
         <DropdownMenu>
@@ -117,7 +117,7 @@ export function StaffLayout({ children }: StaffLayoutProps) {
               <div className="flex items-center justify-between p-4 border-b border-sidebar-border">
                 <div className="flex items-center gap-2">
                   <Scissors className="w-6 h-6 text-primary" />
-                  <span className="font-bold">پنل کارمند</span>
+                  <span className="font-bold">{user?.salon?.name}</span>
                 </div>
                 <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(false)}>
                   <X className="w-5 h-5" />
@@ -154,7 +154,7 @@ export function StaffLayout({ children }: StaffLayoutProps) {
               <Scissors className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <h1 className="font-bold text-sm">{user?.salon?.name || 'فیر سالن'}</h1>
+              <h1 className="font-bold text-sm">{user?.salon?.name}</h1>
               <p className="text-xs text-muted-foreground">پنل کارمند</p>
             </div>
           </Link>

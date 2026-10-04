@@ -6,6 +6,11 @@ import { getManagerSalonId } from '@/lib/salon'
 import { z } from 'zod'
 
 import { mergeSalonSettings } from '@/lib/salon-appearance'
+import {
+  MAX_PAYMENT_EXPIRATION_MINUTES,
+  MIN_PAYMENT_EXPIRATION_MINUTES,
+  normalizeTelegramReceiptUrl,
+} from '@/lib/salon-settings'
 import type { UserRole } from '@/lib/types'
 
 function canManageSettings(role: UserRole) {
@@ -17,18 +22,71 @@ const appearanceSchema = z.object({
   colorIntensity: z.number().min(0).max(100).optional(),
   // Accept legacy theme for old clients; mergeSalonSettings converts to hue
   theme: z.enum(['violet', 'rose', 'teal', 'amber']).optional(),
-  welcomeBadge: z.string().max(80).optional(),
-  welcomeSubtitle: z.string().max(300).optional(),
+  welcomeBadge: z
+    .string()
+    .max(80)
+    .optional()
+    .transform((value) => value?.trim()),
+  welcomeSubtitle: z
+    .string()
+    .max(300)
+    .optional()
+    .transform((value) => value?.trim()),
   showCharacter: z.boolean().optional(),
 })
 
+const optionalText = z
+  .string()
+  .nullable()
+  .optional()
+  .transform((value) => {
+    if (value === undefined) return undefined
+    if (value === null) return null
+    const trimmed = value.trim()
+    return trimmed.length ? trimmed : null
+  })
+
+const paymentSchema = z.object({
+  bankCardNumber: z
+    .string()
+    .max(32)
+    .optional()
+    .transform((value) => value?.replace(/[\s-]/g, '').trim())
+    .refine((value) => !value || /^\d{16}$/.test(value), 'شماره کارت باید ۱۶ رقم باشد'),
+  bankAccountOwner: z
+    .string()
+    .max(120)
+    .optional()
+    .transform((value) => value?.trim()),
+  paymentPhone: z
+    .string()
+    .max(20)
+    .optional()
+    .transform((value) => value?.trim()),
+  telegramReceiptUrl: z
+    .string()
+    .max(200)
+    .optional()
+    .transform((value) => (value?.trim() ? normalizeTelegramReceiptUrl(value) : ''))
+    .refine(
+      (value) => value === '' || value.startsWith('https://'),
+      'لینک تلگرام معتبر نیست — مثلاً @SalonUsername یا https://t.me/SalonUsername'
+    ),
+  paymentExpirationMinutes: z
+    .number()
+    .int()
+    .min(MIN_PAYMENT_EXPIRATION_MINUTES, 'مهلت پرداخت نمی‌تواند کمتر از ۵ دقیقه باشد')
+    .max(MAX_PAYMENT_EXPIRATION_MINUTES)
+    .optional(),
+})
+
 const updateSettingsSchema = z.object({
-  name: z.string().min(2).optional(),
-  slug: z.string().min(2).optional(),
-  description: z.string().optional(),
-  phone: z.string().optional(),
-  address: z.string().optional(),
-  city: z.string().optional(),
+  name: z.string().trim().min(2, 'نام سالن باید حداقل ۲ حرف باشد').optional(),
+  slug: z.string().trim().min(2, 'آدرس اینترنتی باید حداقل ۲ حرف باشد').optional(),
+  description: optionalText,
+  phone: optionalText,
+  address: optionalText,
+  city: optionalText,
   openingHours: z.record(z.object({
     open: z.string(),
     close: z.string(),
@@ -41,6 +99,7 @@ const updateSettingsSchema = z.object({
     reminderHours: z.number().optional(),
     maxAdvanceBookingDays: z.number().int().min(0).max(365).optional(),
     appearance: appearanceSchema.optional(),
+    payment: paymentSchema.optional(),
   }).optional(),
 })
 
@@ -119,8 +178,9 @@ export async function PATCH(request: Request) {
     const validation = updateSettingsSchema.safeParse(body)
 
     if (!validation.success) {
+      const message = validation.error.issues[0]?.message
       return NextResponse.json(
-        { error: 'اطلاعات نامعتبر', details: validation.error.errors },
+        { error: message && message !== 'Required' ? message : 'اطلاعات نامعتبر' },
         { status: 400 }
       )
     }

@@ -4,7 +4,7 @@ import { SalonBookingView } from '@/components/booking/salon-booking-view'
 import { NailArtistCharacter } from '@/components/salon'
 import { Card, CardContent } from '@/components/ui/card'
 import { MapPin, Sparkles } from 'lucide-react'
-import { extractSalonAppearance } from '@/lib/salon-appearance'
+import { resolveSalonAppearance } from '@/lib/salon-appearance'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,7 +31,7 @@ export default async function HomePage() {
 
   if (salons.length === 1) {
     const salon = salons[0]
-    const appearance = extractSalonAppearance(salon.settings)
+    const appearance = resolveSalonAppearance(salon.settings, salon.name)
     return (
       <SalonBookingView
         salonSlug={salon.slug}

@@ -16,9 +16,10 @@ type AuthMode = 'phone' | 'otp' | 'password' | 'register'
 interface LoginFormProps {
   onSuccess?: () => void
   redirectTo?: string
+  salonName?: string | null
 }
 
-export function LoginForm({ onSuccess, redirectTo }: LoginFormProps) {
+export function LoginForm({ onSuccess, redirectTo, salonName }: LoginFormProps) {
   const router = useRouter()
   const { login, loginWithOTP, requestOTP, refreshUser } = useAuth()
   const [mode, setMode] = useState<AuthMode>('phone')
@@ -172,7 +173,7 @@ export function LoginForm({ onSuccess, redirectTo }: LoginFormProps) {
           <Scissors className="w-8 h-8 text-primary" />
         </motion.div>
         <div>
-          <CardTitle className="text-2xl">فیر سالن</CardTitle>
+          <CardTitle className="text-2xl">{salonName?.trim() || 'ورود'}</CardTitle>
           <CardDescription className="mt-2">
             {mode === 'phone' && 'برای ورود شماره موبایل خود را وارد کنید'}
             {mode === 'otp' && 'کد تایید ارسال شده را وارد کنید'}
@@ -417,7 +418,9 @@ export function LoginForm({ onSuccess, redirectTo }: LoginFormProps) {
               className="space-y-4"
             >
               <div className="text-center text-sm text-muted-foreground mb-4">
-                به فیر سالن خوش آمدید! لطفا اطلاعات خود را تکمیل کنید.
+                {salonName?.trim()
+                  ? `به ${salonName.trim()} خوش آمدید! لطفا اطلاعات خود را تکمیل کنید.`
+                  : 'لطفا اطلاعات خود را تکمیل کنید.'}
               </div>
 
               <div className="grid grid-cols-2 gap-4">

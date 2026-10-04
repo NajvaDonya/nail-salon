@@ -7,13 +7,19 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "test:e2e": "playwright test",
+    "test:all": "npm run test:unit && npm run test:integration",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
     "db:seed": "npx tsx prisma/seed.ts",
     "db:seed-donya": "npx tsx prisma/seed-donya-appointments.ts",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "db:test:prepare": "node scripts/prepare-test-db.mjs"
   },
   "prisma": {
     "seed": "npx tsx prisma/seed.ts"
@@ -77,10 +83,13 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4.2.0",
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.2.6",
     "postcss": "^8.5",
     "tailwindcss": "^4.2.0",
     "tsx": "^4.22.3",

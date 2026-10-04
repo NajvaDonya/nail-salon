@@ -18,7 +18,8 @@ import {
   Save,
   Phone,
   MapPin,
-  Globe
+  Globe,
+  CreditCard
 } from 'lucide-react'
 import useSWR from 'swr'
 import { toast } from 'sonner'
@@ -27,6 +28,11 @@ import {
   DEFAULT_SALON_APPEARANCE,
   extractSalonAppearance,
   appearanceStyleVars,
+  defaultWelcomeBadge,
+  readWelcomeBadge,
+  readWelcomeSubtitle,
+  resolveWelcomeBadge,
+  resolveWelcomeSubtitle,
 } from '@/lib/salon-appearance'
 import { HueColorSlider, ColorIntensitySlider } from '@/components/salon'
 
@@ -55,7 +61,16 @@ interface SalonSettings {
     reminderHours: number
     maxAdvanceBookingDays: number
     appearance?: SalonAppearance
+    payment?: SalonPaymentFields
   }
+}
+
+interface SalonPaymentFields {
+  bankCardNumber?: string
+  bankAccountOwner?: string
+  paymentPhone?: string
+  telegramReceiptUrl?: string
+  paymentExpirationMinutes?: number
 }
 
 const defaultOpeningHours = {
@@ -68,6 +83,25 @@ const defaultOpeningHours = {
   friday: { open: '00:00', close: '00:00', isOpen: false },
 }
 
+type SettingsDraft = {
+  name?: string
+  slug?: string
+  description?: string | null
+  phone?: string | null
+  address?: string | null
+  city?: string | null
+  openingHours?: SalonSettings['openingHours']
+  settings?: {
+    allowOnlineBooking?: boolean
+    requireConfirmation?: boolean
+    sendReminders?: boolean
+    reminderHours?: number
+    maxAdvanceBookingDays?: number
+    appearance?: Partial<SalonAppearance>
+    payment?: SalonPaymentFields
+  }
+}
+
 const dayNames: Record<string, string> = {
   saturday: 'شنبه',
   sunday: 'یکشنبه',
@@ -78,17 +112,62 @@ const dayNames: Record<string, string> = {
   friday: 'جمعه',
 }
 
+function mergeSettings(
+  base: SalonSettings['settings'] | undefined,
+  patch: SettingsDraft['settings'] | undefined
+): SalonSettings['settings'] {
+  const baseAppearance =
+    base?.appearance && typeof base.appearance === 'object' ? base.appearance : {}
+  const patchAppearance =
+    patch?.appearance && typeof patch.appearance === 'object' ? patch.appearance : {}
+  const basePayment = base?.payment && typeof base.payment === 'object' ? base.payment : {}
+  const patchPayment = patch?.payment && typeof patch.payment === 'object' ? patch.payment : {}
+
+  return {
+    allowOnlineBooking: true,
+    requireConfirmation: false,
+    sendReminders: true,
+    reminderHours: 24,
+    maxAdvanceBookingDays: 30,
+    ...base,
+    ...patch,
+    appearance: {
+      ...baseAppearance,
+      ...patchAppearance,
+    } as SalonAppearance,
+    payment: {
+      ...basePayment,
+      ...patchPayment,
+    },
+  }
+}
+
 export default function SettingsPage() {
-  const { user } = useAuth()
+  const { refreshUser } = useAuth()
   const { data, mutate } = useSWR<{ salon: SalonSettings }>('/api/dashboard/settings', fetcher)
   const [isSaving, setIsSaving] = useState(false)
-  const [formData, setFormData] = useState<Partial<SalonSettings>>({})
+  const [formData, setFormData] = useState<SettingsDraft>({})
+  const [numberDrafts, setNumberDrafts] = useState<{
+    reminderHours?: string
+    maxAdvanceBookingDays?: string
+    paymentExpirationMinutes?: string
+  }>({})
 
   const salon = data?.salon
-  const currentData = { ...salon, ...formData }
+  const mergedSettings = mergeSettings(salon?.settings, formData.settings)
+  const currentData = { ...salon, ...formData, settings: mergedSettings }
 
   const handleSave = async () => {
     if (Object.keys(formData).length === 0) return
+
+    if (typeof formData.name === 'string' && formData.name.trim().length < 2) {
+      toast.error('نام سالن باید حداقل ۲ حرف باشد')
+      return
+    }
+    if (typeof formData.slug === 'string' && formData.slug.trim().length < 2) {
+      toast.error('آدرس اینترنتی باید حداقل ۲ حرف باشد')
+      return
+    }
 
     setIsSaving(true)
     try {
@@ -106,6 +185,8 @@ export default function SettingsPage() {
       toast.success('تنظیمات با موفقیت ذخیره شد')
       await mutate()
       setFormData({})
+      setNumberDrafts({})
+      await refreshUser()
     } catch (error) {
       console.error('Failed to save settings:', error)
       toast.error('خطا در برقراری ارتباط با سرور')
@@ -143,31 +224,70 @@ export default function SettingsPage() {
     maxAdvanceBookingDays: 30,
   }
 
-  const updateSettings = (field: keyof SalonSettings['settings'], value: unknown) => {
-    const currentSettings = currentData.settings ?? defaultSettings
+  const updateSettings = (field: keyof NonNullable<SettingsDraft['settings']>, value: unknown) => {
     setFormData(prev => ({
       ...prev,
       settings: {
-        ...currentSettings,
+        ...prev.settings,
         [field]: value,
       },
     }))
   }
 
   const updateAppearance = (field: keyof SalonAppearance, value: unknown) => {
-    const currentSettings = currentData.settings ?? defaultSettings
-    const currentAppearance = extractSalonAppearance(currentSettings)
+    setFormData(prev => {
+      const prevAppearance =
+        prev.settings?.appearance && typeof prev.settings.appearance === 'object'
+          ? prev.settings.appearance
+          : {}
+      return {
+        ...prev,
+        settings: {
+          ...prev.settings,
+          appearance: {
+            ...prevAppearance,
+            [field]: value,
+          },
+        },
+      }
+    })
+  }
+
+  const updatePayment = (field: keyof SalonPaymentFields, value: unknown) => {
     setFormData(prev => ({
       ...prev,
       settings: {
-        ...currentSettings,
-        appearance: {
-          ...currentAppearance,
+        ...prev.settings,
+        payment: {
+          ...prev.settings?.payment,
           [field]: value,
         },
       },
     }))
   }
+
+  const draftAppearance = formData.settings?.appearance
+  const welcomeBadgeDraft =
+    draftAppearance && Object.prototype.hasOwnProperty.call(draftAppearance, 'welcomeBadge')
+      ? String(draftAppearance.welcomeBadge ?? '')
+      : undefined
+  const welcomeSubtitleDraft =
+    draftAppearance && Object.prototype.hasOwnProperty.call(draftAppearance, 'welcomeSubtitle')
+      ? String(draftAppearance.welcomeSubtitle ?? '')
+      : undefined
+  const storedWelcomeBadge = readWelcomeBadge(salon?.settings)
+  const storedWelcomeSubtitle = readWelcomeSubtitle(salon?.settings)
+  const welcomeBadgeInput =
+    welcomeBadgeDraft ??
+    storedWelcomeBadge ??
+    defaultWelcomeBadge(currentData.name)
+  const welcomeSubtitleInput =
+    welcomeSubtitleDraft ?? storedWelcomeSubtitle ?? DEFAULT_SALON_APPEARANCE.welcomeSubtitle
+  const previewBadge = resolveWelcomeBadge(
+    welcomeBadgeDraft ?? storedWelcomeBadge,
+    currentData.name
+  )
+  const previewSubtitle = resolveWelcomeSubtitle(welcomeSubtitleDraft ?? storedWelcomeSubtitle)
 
   if (!salon) {
     return (
@@ -183,6 +303,7 @@ export default function SettingsPage() {
   >
   const settings = currentData.settings ?? defaultSettings
   const appearance = extractSalonAppearance(settings)
+  const payment = settings.payment ?? {}
 
   return (
     <div className="space-y-6">
@@ -303,6 +424,106 @@ export default function SettingsPage() {
                 </div>
               </CardContent>
             </Card>
+
+            <Card className="mt-6">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CreditCard className="w-5 h-5" />
+                  اطلاعات پرداخت
+                </CardTitle>
+                <CardDescription>
+                  مشتری بیعانه را کارت‌به‌کارت واریز و رسید را در تلگرام برای شما ارسال می‌کند
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="bankCardNumber">شماره کارت</Label>
+                    <Input
+                      id="bankCardNumber"
+                      value={payment.bankCardNumber ?? ''}
+                      onChange={(e) => updatePayment('bankCardNumber', e.target.value)}
+                      dir="ltr"
+                      className="text-left font-mono"
+                      placeholder="6037xxxxxxxxxxxx"
+                      inputMode="numeric"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="bankAccountOwner">نام صاحب حساب</Label>
+                    <Input
+                      id="bankAccountOwner"
+                      value={payment.bankAccountOwner ?? ''}
+                      onChange={(e) => updatePayment('bankAccountOwner', e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="paymentPhone">شماره موبایل سالن</Label>
+                    <Input
+                      id="paymentPhone"
+                      value={payment.paymentPhone ?? ''}
+                      onChange={(e) => updatePayment('paymentPhone', e.target.value)}
+                      dir="ltr"
+                      className="text-left"
+                      placeholder="09123456789"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="telegramReceiptUrl">آیدی یا لینک تلگرام برای ارسال رسید</Label>
+                    <Input
+                      id="telegramReceiptUrl"
+                      value={payment.telegramReceiptUrl ?? ''}
+                      onChange={(e) => updatePayment('telegramReceiptUrl', e.target.value)}
+                      dir="ltr"
+                      className="text-left"
+                      placeholder="@SalonUsername یا https://t.me/SalonUsername"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="paymentExpirationMinutes">
+                    مهلت پرداخت و بررسی رسید (دقیقه)
+                  </Label>
+                  <Input
+                    id="paymentExpirationMinutes"
+                    type="number"
+                    value={
+                      numberDrafts.paymentExpirationMinutes ??
+                      String(payment.paymentExpirationMinutes ?? 30)
+                    }
+                    onChange={(e) => {
+                      const raw = e.target.value
+                      setNumberDrafts((prev) => ({ ...prev, paymentExpirationMinutes: raw }))
+                      if (raw.trim() === '') {
+                        setFormData((prev) => {
+                          if (!prev.settings?.payment) return prev
+                          const nextPayment = { ...prev.settings.payment }
+                          delete nextPayment.paymentExpirationMinutes
+                          return {
+                            ...prev,
+                            settings: { ...prev.settings, payment: nextPayment },
+                          }
+                        })
+                        return
+                      }
+                      const parsed = Number.parseInt(raw, 10)
+                      if (!Number.isNaN(parsed)) updatePayment('paymentExpirationMinutes', parsed)
+                    }}
+                    min={5}
+                    max={1440}
+                    className="w-32"
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    پس از اعلام ارسال رسید توسط مشتری، همین مدت برای بررسی و تأیید شما فرصت است.
+                    تغییر این مقدار روی رزروهای قبلی اثر ندارد.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
           </motion.div>
         </TabsContent>
 
@@ -415,8 +636,22 @@ export default function SettingsPage() {
                     <Label>زمان یادآوری (ساعت قبل از نوبت)</Label>
                     <Input
                       type="number"
-                      value={settings.reminderHours || 24}
-                      onChange={(e) => updateSettings('reminderHours', parseInt(e.target.value))}
+                      value={numberDrafts.reminderHours ?? String(settings.reminderHours ?? 24)}
+                      onChange={(e) => {
+                        const raw = e.target.value
+                        setNumberDrafts((prev) => ({ ...prev, reminderHours: raw }))
+                        if (raw.trim() === '') {
+                          setFormData((prev) => {
+                            if (!prev.settings || !('reminderHours' in prev.settings)) return prev
+                            const nextSettings = { ...prev.settings }
+                            delete nextSettings.reminderHours
+                            return { ...prev, settings: nextSettings }
+                          })
+                          return
+                        }
+                        const parsed = Number.parseInt(raw, 10)
+                        if (!Number.isNaN(parsed)) updateSettings('reminderHours', parsed)
+                      }}
                       min={1}
                       max={72}
                       className="w-32"
@@ -431,10 +666,25 @@ export default function SettingsPage() {
                   </p>
                   <Input
                     type="number"
-                    value={settings.maxAdvanceBookingDays ?? 30}
-                    onChange={(e) =>
-                      updateSettings('maxAdvanceBookingDays', parseInt(e.target.value, 10) || 30)
+                    value={
+                      numberDrafts.maxAdvanceBookingDays ??
+                      String(settings.maxAdvanceBookingDays ?? 30)
                     }
+                    onChange={(e) => {
+                      const raw = e.target.value
+                      setNumberDrafts((prev) => ({ ...prev, maxAdvanceBookingDays: raw }))
+                      if (raw.trim() === '') {
+                        setFormData((prev) => {
+                          if (!prev.settings || !('maxAdvanceBookingDays' in prev.settings)) return prev
+                          const nextSettings = { ...prev.settings }
+                          delete nextSettings.maxAdvanceBookingDays
+                          return { ...prev, settings: nextSettings }
+                        })
+                        return
+                      }
+                      const parsed = Number.parseInt(raw, 10)
+                      if (!Number.isNaN(parsed)) updateSettings('maxAdvanceBookingDays', parsed)
+                    }}
                     min={0}
                     max={365}
                     className="w-32"
@@ -481,20 +731,27 @@ export default function SettingsPage() {
                   <Label htmlFor="welcomeBadge">برچسب کوچک</Label>
                   <Input
                     id="welcomeBadge"
-                    value={appearance.welcomeBadge}
+                    value={welcomeBadgeInput}
                     onChange={(e) => updateAppearance('welcomeBadge', e.target.value)}
-                    placeholder={DEFAULT_SALON_APPEARANCE.welcomeBadge}
+                    placeholder={defaultWelcomeBadge(currentData.name) || 'برچسب خوش‌آمد'}
                   />
+                  <p className="text-sm text-muted-foreground">
+                    می‌توانید هر متنی بنویسید یا فیلد را خالی کنید. تا وقتی خودتان آن را عوض
+                    نکنید، با نام سالن نمایش داده می‌شود.
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="welcomeSubtitle">توضیح زیر عنوان</Label>
                   <Textarea
                     id="welcomeSubtitle"
-                    value={appearance.welcomeSubtitle}
+                    value={welcomeSubtitleInput}
                     onChange={(e) => updateAppearance('welcomeSubtitle', e.target.value)}
-                    placeholder={DEFAULT_SALON_APPEARANCE.welcomeSubtitle}
+                    placeholder="توضیح صفحه رزرو"
                     rows={3}
                   />
+                  <p className="text-sm text-muted-foreground">
+                    این متن را می‌توانید تغییر دهید یا کاملاً خالی بگذارید.
+                  </p>
                 </div>
                 <div className="flex items-center justify-between">
                   <div>
@@ -524,13 +781,17 @@ export default function SettingsPage() {
                   <div
                     className="salon-banner p-5 text-white text-right space-y-2"
                   >
-                    <p className="text-xs font-semibold bg-white/25 inline-block px-2 py-1 rounded-full">
-                      {appearance.welcomeBadge}
-                    </p>
+                    {previewBadge ? (
+                      <p className="text-xs font-semibold bg-white/25 inline-block px-2 py-1 rounded-full">
+                        {previewBadge}
+                      </p>
+                    ) : null}
                     <p className="font-bold text-lg">
-                      رزرو نوبت — {currentData.name || 'سالن شما'}
+                      رزرو نوبت — {currentData.name?.trim() || 'سالن شما'}
                     </p>
-                    <p className="text-sm text-white/85">{appearance.welcomeSubtitle}</p>
+                    {previewSubtitle ? (
+                      <p className="text-sm text-white/85">{previewSubtitle}</p>
+                    ) : null}
                   </div>
                   <div className="salon-card m-4 p-4 text-sm salon-text-muted text-center">
                     فرم رزرو نوبت

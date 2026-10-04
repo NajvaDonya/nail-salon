@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/db'
 import { SalonBookingView } from '@/components/booking/salon-booking-view'
-import { extractSalonAppearance } from '@/lib/salon-appearance'
+import { resolveSalonAppearance } from '@/lib/salon-appearance'
 import { parseSalonSettings } from '@/lib/salon-settings'
 
 export const dynamic = 'force-dynamic'
@@ -16,7 +16,7 @@ export default async function SalonBookingPage({ params }: SalonBookingPageProps
     select: { name: true, slug: true, settings: true },
   })
 
-  const appearance = extractSalonAppearance(salon?.settings)
+  const appearance = resolveSalonAppearance(salon?.settings, salon?.name)
   const { maxAdvanceBookingDays } = parseSalonSettings(salon?.settings)
 
   return (

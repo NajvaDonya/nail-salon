@@ -3,9 +3,14 @@ import {
   buildThemeVarsFromHue,
   DEFAULT_COLOR_INTENSITY,
   DEFAULT_SALON_APPEARANCE,
+  LEGACY_WELCOME_BADGE,
   normalizeColorIntensity,
   parseSalonAppearance,
   appearanceStyleVars,
+  readWelcomeBadge,
+  readWelcomeSubtitle,
+  resolveWelcomeBadge,
+  resolveWelcomeSubtitle,
 } from '@/lib/salon-appearance'
 
 describe('normalizeColorIntensity', () => {
@@ -31,6 +36,39 @@ describe('parseSalonAppearance', () => {
   it('reads colorIntensity when set', () => {
     const appearance = parseSalonAppearance({ hue: 300, colorIntensity: 80 })
     expect(appearance.colorIntensity).toBe(80)
+  })
+
+  it('keeps an explicitly empty welcome badge', () => {
+    const appearance = parseSalonAppearance({ hue: 300, welcomeBadge: '' })
+    expect(appearance.welcomeBadge).toBe('')
+  })
+})
+
+describe('welcome copy', () => {
+  it('uses the salon name when the badge was never customized', () => {
+    expect(resolveWelcomeBadge(readWelcomeBadge({}), 'سالن دریا')).toBe('خوش آمدید به سالن دریا')
+    expect(resolveWelcomeBadge(readWelcomeBadge({ appearance: { welcomeBadge: LEGACY_WELCOME_BADGE } }), 'سالن دریا')).toBe(
+      'خوش آمدید به سالن دریا'
+    )
+  })
+
+  it('hides the badge when the manager clears it', () => {
+    const settings = { appearance: { welcomeBadge: '   ' } }
+    expect(readWelcomeBadge(settings)).toBe('   ')
+    expect(resolveWelcomeBadge(readWelcomeBadge(settings), 'سالن دریا')).toBe('')
+  })
+
+  it('keeps a custom badge and allows an empty subtitle', () => {
+    const settings = {
+      appearance: { welcomeBadge: 'سلام', welcomeSubtitle: '' },
+    }
+    expect(resolveWelcomeBadge(readWelcomeBadge(settings), 'سالن دریا')).toBe('سلام')
+    expect(readWelcomeSubtitle(settings)).toBe('')
+    expect(resolveWelcomeSubtitle(readWelcomeSubtitle(settings))).toBe('')
+  })
+
+  it('uses the default subtitle until it is customized', () => {
+    expect(resolveWelcomeSubtitle(readWelcomeSubtitle({}))).toBe(DEFAULT_SALON_APPEARANCE.welcomeSubtitle)
   })
 })
 

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { generateOTP, isMockOtpMode } from '@/lib/auth'
 import { smsService } from '@/lib/sms'
+import { getPrimarySalonName } from '@/lib/salon'
 
 export async function POST(request: Request) {
   try {
@@ -44,8 +45,9 @@ export async function POST(request: Request) {
     // Find existing user (optional - can create on verify)
     const user = await prisma.user.findUnique({
       where: { phone },
-      select: { id: true },
+      select: { id: true, salon: { select: { name: true } } },
     })
+    const salonName = user?.salon?.name?.trim() || (await getPrimarySalonName())
 
     // Generate OTP
     const code = generateOTP()
@@ -62,7 +64,7 @@ export async function POST(request: Request) {
     })
 
     // Send SMS
-    const sent = await smsService.sendOTP(phone, code)
+    const sent = await smsService.sendOTP(phone, code, salonName)
     
     if (!sent) {
       console.error('Failed to send OTP SMS to:', phone)

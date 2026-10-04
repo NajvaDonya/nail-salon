@@ -3,13 +3,15 @@ import { prisma } from '@/lib/db'
 import { getCurrentUser } from '@/lib/auth'
 import { cleanupExpiredAwaitingPayments } from '@/lib/appointment-cleanup'
 import { verifySlotHold, releaseHoldsByToken, SlotHoldError } from '@/lib/slot-hold'
-import { createPaymentRequest } from '@/lib/payment'
+import { buildCardPaymentView } from '@/lib/card-payment'
 import {
   parseSalonSettings,
   assertOnlineBookingAllowed,
   assertBookingDateWithinLimit,
+  assertCardPaymentConfigured,
   OnlineBookingDisabledError,
   BookingDateOutOfRangeError,
+  PaymentInfoMissingError,
 } from '@/lib/salon-settings'
 import {
   BookingQuoteError,
@@ -23,6 +25,7 @@ import {
   lockStaffForBooking,
 } from '@/lib/appointment-conflict'
 import { getStaffBreakSettings } from '@/lib/staff-breaks'
+import { parseAppointmentDate } from '@/lib/slot-hold'
 import { z } from 'zod'
 
 const selectionSchema = z.object({
@@ -40,15 +43,7 @@ const checkoutSchema = z.object({
   startTime: z.string(),
   notes: z.string().optional(),
   holdToken: z.string().min(1),
-  returnTo: z.string().optional(),
 })
-
-function sanitizeReturnTo(returnTo: string | undefined, slug: string): string {
-  if (!returnTo) return `/salon/${slug}/book`
-  if (returnTo === '/') return '/'
-  if (returnTo === `/salon/${slug}/book`) return returnTo
-  return `/salon/${slug}/book`
-}
 
 export async function POST(
   request: Request,
@@ -84,9 +79,7 @@ export async function POST(
       startTime,
       notes,
       holdToken,
-      returnTo,
     } = validation.data
-    const safeReturnTo = sanitizeReturnTo(returnTo, slug)
     const dateKey = date.split('T')[0]
 
     const salon = await prisma.salon.findUnique({
@@ -102,9 +95,14 @@ export async function POST(
 
     try {
       assertOnlineBookingAllowed(salonSettings)
+      assertCardPaymentConfigured(salonSettings)
       assertBookingDateWithinLimit(dateKey, salonSettings)
     } catch (error) {
-      if (error instanceof OnlineBookingDisabledError || error instanceof BookingDateOutOfRangeError) {
+      if (
+        error instanceof OnlineBookingDisabledError ||
+        error instanceof PaymentInfoMissingError ||
+        error instanceof BookingDateOutOfRangeError
+      ) {
         return NextResponse.json({ error: error.message }, { status: 403 })
       }
       throw error
@@ -138,7 +136,7 @@ export async function POST(
     }
 
     const { totalPrice, depositAmount, balanceDue, occupiedMinutes, serviceIds } = quote
-    const appointmentDate = new Date(`${dateKey}T00:00:00`)
+    const appointmentDate = parseAppointmentDate(dateKey)
     const startDateTime = new Date(`${dateKey}T${startTime}`)
     const endDateTime = new Date(startDateTime.getTime() + occupiedMinutes * 60000)
 
@@ -169,7 +167,7 @@ export async function POST(
     const snapshots = buildAppointmentSnapshots(quote.lineItems)
 
     let appointmentId: string
-    let paymentId: string
+    let paymentCreatedAt: Date
 
     try {
       const created = await prisma.$transaction(async (tx) => {
@@ -225,6 +223,8 @@ export async function POST(
             appointmentId: appointment.id,
             amount: depositAmount,
             authority: null,
+            // Snapshot the salon setting so later changes never move this booking's deadline.
+            expirationMinutes: salonSettings.payment.paymentExpirationMinutes,
           },
         })
 
@@ -232,7 +232,7 @@ export async function POST(
       })
 
       appointmentId = created.appointment.id
-      paymentId = created.payment.id
+      paymentCreatedAt = created.appointment.createdAt
     } catch (error) {
       if (error instanceof SlotHoldError) {
         return NextResponse.json({ error: error.message }, { status: 409 })
@@ -240,46 +240,10 @@ export async function POST(
       throw error
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-    const callbackUrl = new URL('/api/payments/callback', appUrl)
-    callbackUrl.searchParams.set('slug', slug)
-    callbackUrl.searchParams.set('returnTo', safeReturnTo)
-
-    let authority: string
-    let paymentUrl: string
-
-    try {
-      const paymentRequest = await createPaymentRequest({
-        amount: depositAmount,
-        description: `بیعانه رزرو نوبت ${salon.name}`,
-        callbackUrl: callbackUrl.toString(),
-        mobile: user.phone,
-      })
-      authority = paymentRequest.authority
-      paymentUrl = paymentRequest.paymentUrl
-    } catch (paymentError) {
-      console.error('Payment request failed, rolling back appointment:', paymentError)
-      await prisma.appointment.update({
-        where: { id: appointmentId },
-        data: { status: 'CANCELLED' },
-      })
-      await prisma.payment.update({
-        where: { id: paymentId },
-        data: { status: 'FAILED' },
-      })
-      return NextResponse.json({ error: 'خطا در ایجاد درخواست پرداخت' }, { status: 502 })
-    }
-
-    await prisma.payment.update({
-      where: { id: paymentId },
-      data: { authority },
-    })
-
     await releaseHoldsByToken(holdToken)
 
     return NextResponse.json({
       success: true,
-      paymentUrl,
       appointment: {
         id: appointmentId,
         trackingCode,
@@ -288,6 +252,16 @@ export async function POST(
         balanceDue,
         serviceIds,
       },
+      payment: buildCardPaymentView({
+        amount: depositAmount,
+        status: 'PENDING',
+        createdAt: paymentCreatedAt,
+        expirationMinutes: salonSettings.payment.paymentExpirationMinutes,
+        paymentSubmittedAt: null,
+        paymentExpiresAt: null,
+        paymentRejectionReason: null,
+        salonPayment: salonSettings.payment,
+      }),
     })
   } catch (error) {
     console.error('Checkout error:', error)

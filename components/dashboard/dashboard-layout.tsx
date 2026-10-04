@@ -72,7 +72,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         
         <Link href="/dashboard" className="flex items-center gap-2">
           <Scissors className="w-6 h-6 text-primary" />
-          <span className="font-bold text-lg">{user?.salon?.name || 'فیر سالن'}</span>
+          <span className="font-bold text-lg">{user?.salon?.name}</span>
         </Link>
 
         <DropdownMenu>
@@ -126,7 +126,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               <div className="flex items-center justify-between p-4 border-b border-sidebar-border">
                 <div className="flex items-center gap-2">
                   <Scissors className="w-6 h-6 text-primary" />
-                  <span className="font-bold">{user?.salon?.name || 'فیر سالن'}</span>
+                  <span className="font-bold">{user?.salon?.name}</span>
                 </div>
                 <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(false)}>
                   <X className="w-5 h-5" />
@@ -163,7 +163,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               <Scissors className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <h1 className="font-bold text-sm">{user?.salon?.name || 'فیر سالن'}</h1>
+              <h1 className="font-bold text-sm">{user?.salon?.name}</h1>
               <p className="text-xs text-muted-foreground">پنل مدیریت</p>
             </div>
           </Link>

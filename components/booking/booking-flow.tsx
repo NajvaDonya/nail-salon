@@ -34,6 +34,7 @@ import {
   toDateKey,
 } from '@/lib/jalali'
 import { getHoldToken, releaseHoldToken } from '@/lib/hold-token'
+import { CardPaymentBox, type CardPaymentData } from '@/components/booking/card-payment-box'
 import { useAuth } from '@/contexts/auth-context'
 import { CharacterTip } from '@/components/salon/character-tip'
 import useSWR from 'swr'
@@ -191,7 +192,6 @@ export function BookingFlow({
   const searchParams = useSearchParams()
   const { user, refreshUser } = useAuth()
   const isCustomerLoggedIn = user?.role === 'CUSTOMER'
-  const paymentReturnTo = returnTo || `/salon/${salonSlug}/book`
 
   const [currentStep, setCurrentStep] = useState(1)
   const [baseServiceIds, setBaseServiceIds] = useState<string[]>([])
@@ -216,6 +216,8 @@ export function BookingFlow({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [bookingSuccess, setBookingSuccess] = useState(false)
   const [trackingCode, setTrackingCode] = useState('')
+  const [appointmentId, setAppointmentId] = useState('')
+  const [cardPayment, setCardPayment] = useState<CardPaymentData | null>(null)
   const [slotHoldError, setSlotHoldError] = useState('')
   const [checkoutError, setCheckoutError] = useState('')
 
@@ -388,12 +390,13 @@ export function BookingFlow({
   }
 
   useEffect(() => {
-    if (currentStep === 4 && selectedSlot) {
+    // Once the booking row exists the slot is held by the appointment itself.
+    if (currentStep === 4 && selectedSlot && !cardPayment) {
       void refreshHold(true)
       const timer = setInterval(() => void refreshHold(true), 120000)
       return () => clearInterval(timer)
     }
-  }, [currentStep, selectedSlot])
+  }, [currentStep, selectedSlot, cardPayment])
 
   const selectSlot = async (slot: TimeSlot) => {
     setSelectedSlot(slot)
@@ -467,7 +470,7 @@ export function BookingFlow({
     }
   }
 
-  const handlePayment = async () => {
+  const handleReserve = async () => {
     setCheckoutError('')
     setIsSubmitting(true)
     try {
@@ -486,7 +489,6 @@ export function BookingFlow({
           startTime: selectedSlot?.start,
           notes: customerNotes,
           holdToken,
-          returnTo: paymentReturnTo,
         }),
       })
       const data = await res.json()
@@ -494,15 +496,21 @@ export function BookingFlow({
         if (res.status === 409) setSlotHoldError(data.error || 'رزرو موقت منقضی شده')
         throw new Error(data.error || 'خطا در ثبت نوبت')
       }
-      window.location.href = data.paymentUrl
+      setAppointmentId(data.appointment.id)
+      setTrackingCode(data.appointment.trackingCode ?? '')
+      setCardPayment(data.payment)
     } catch (err) {
-      setCheckoutError(err instanceof Error ? err.message : 'خطا در پرداخت')
+      setCheckoutError(err instanceof Error ? err.message : 'خطا در ثبت نوبت')
+    } finally {
       setIsSubmitting(false)
     }
   }
 
   const nextStep = () => setCurrentStep((s) => Math.min(s + 1, 4))
-  const prevStep = () => setCurrentStep((s) => Math.max(s - 1, 1))
+  const prevStep = () => {
+    if (cardPayment) return
+    setCurrentStep((s) => Math.max(s - 1, 1))
+  }
 
   const canProceed = () => {
     switch (currentStep) {
@@ -720,7 +728,14 @@ export function BookingFlow({
             <div className="grid md:grid-cols-2 gap-6">
               <div className="space-y-4">
                 <h2 className="text-xl font-bold">پرداخت بیعانه</h2>
-                {!isCustomerLoggedIn && (
+                {cardPayment && appointmentId ? (
+                  <CardPaymentBox
+                    appointmentId={appointmentId}
+                    payment={cardPayment}
+                    trackingCode={trackingCode}
+                  />
+                ) : null}
+                {!cardPayment && !isCustomerLoggedIn && (
                   <>
                     <div className="space-y-2">
                       <Label>شماره موبایل</Label>
@@ -767,21 +782,34 @@ export function BookingFlow({
                     {otpError && <p className="text-destructive text-sm">{otpError}</p>}
                   </>
                 )}
-                <div className="space-y-2">
-                  <Label>یادداشت (اختیاری)</Label>
-                  <Textarea value={customerNotes} onChange={(e) => setCustomerNotes(e.target.value)} rows={2} />
-                </div>
+                {!cardPayment && (
+                  <div className="space-y-2">
+                    <Label>یادداشت (اختیاری)</Label>
+                    <Textarea
+                      value={customerNotes}
+                      onChange={(e) => setCustomerNotes(e.target.value)}
+                      rows={2}
+                    />
+                  </div>
+                )}
                 {checkoutError && <p className="text-destructive text-sm">{checkoutError}</p>}
-                {isCustomerLoggedIn && (
+                {!cardPayment && isCustomerLoggedIn && (
                   <Button
                     className="w-full"
                     size="lg"
                     disabled={isSubmitting}
-                    onClick={() => void handlePayment()}
+                    onClick={() => void handleReserve()}
                   >
                     {isSubmitting
-                      ? 'در حال انتقال...'
-                      : `پرداخت بیعانه ${quote.depositAmount.toLocaleString('fa-IR')} تومان`}
+                      ? 'در حال ثبت...'
+                      : `ثبت رزرو و دریافت اطلاعات کارت (${quote.depositAmount.toLocaleString(
+                          'fa-IR'
+                        )} تومان)`}
+                  </Button>
+                )}
+                {cardPayment && (
+                  <Button asChild variant="outline" className="w-full">
+                    <Link href="/account">مشاهده نوبت‌های من</Link>
                   </Button>
                 )}
               </div>
@@ -797,7 +825,11 @@ export function BookingFlow({
       </AnimatePresence>
 
       <div className="flex justify-between mt-8">
-        <Button variant="outline" onClick={prevStep} disabled={currentStep === 1}>
+        <Button
+          variant="outline"
+          onClick={prevStep}
+          disabled={currentStep === 1 || cardPayment !== null}
+        >
           <ArrowRight className="w-4 h-4 ml-2" />
           قبلی
         </Button>

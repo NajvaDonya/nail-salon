@@ -18,6 +18,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { PersianCalendar } from '@/components/dashboard/persian-calendar'
+import { PendingPayments } from '@/components/dashboard/pending-payments'
 import {
   AppointmentForm,
   emptyAppointmentForm,
@@ -609,6 +610,7 @@ export default function AppointmentsPage() {
           <TabsList>
             <TabsTrigger value="calendar">تقویم</TabsTrigger>
             <TabsTrigger value="list">لیست</TabsTrigger>
+            <TabsTrigger value="payments">پرداخت‌های در انتظار تأیید</TabsTrigger>
           </TabsList>
 
           <TabsContent value="calendar" className="space-y-4">
@@ -655,6 +657,10 @@ export default function AppointmentsPage() {
                 <p className="text-muted-foreground">نوبتی برای این روز ثبت نشده است</p>
               </Card>
             )}
+          </TabsContent>
+
+          <TabsContent value="payments" className="space-y-4">
+            <PendingPayments />
           </TabsContent>
         </Tabs>
       )}

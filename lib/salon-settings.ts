@@ -1,13 +1,82 @@
+export interface SalonPaymentInfo {
+  bankCardNumber: string
+  bankAccountOwner: string
+  paymentPhone: string
+  telegramReceiptUrl: string
+  paymentExpirationMinutes: number
+}
+
 export interface ParsedSalonSettings {
   allowOnlineBooking: boolean
   requireConfirmation: boolean
   maxAdvanceBookingDays: number
   sendReminders: boolean
   reminderHours: number
+  payment: SalonPaymentInfo
 }
 
 export const DEFAULT_MAX_ADVANCE_BOOKING_DAYS = 30
 export const DEFAULT_REMINDER_HOURS = 24
+export const DEFAULT_PAYMENT_EXPIRATION_MINUTES = 30
+export const MIN_PAYMENT_EXPIRATION_MINUTES = 5
+export const MAX_PAYMENT_EXPIRATION_MINUTES = 1440
+
+function readString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+/** Accept a full t.me link or a bare @username and store a canonical https link. */
+export function normalizeTelegramReceiptUrl(raw: unknown): string {
+  const value = readString(raw)
+  if (!value) return ''
+
+  const username = value.startsWith('@') ? value.slice(1) : value
+  if (/^[A-Za-z0-9_]{3,64}$/.test(username)) {
+    return `https://t.me/${username}`
+  }
+
+  let parsed: URL
+  try {
+    parsed = new URL(value)
+  } catch {
+    return ''
+  }
+
+  if (parsed.protocol !== 'https:') return ''
+  const host = parsed.hostname.toLowerCase()
+  if (host !== 't.me' && host !== 'telegram.me' && host !== 'telegram.dog') return ''
+
+  return parsed.toString()
+}
+
+export function parsePaymentExpirationMinutes(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return DEFAULT_PAYMENT_EXPIRATION_MINUTES
+  }
+  const minutes = Math.floor(value)
+  if (minutes < MIN_PAYMENT_EXPIRATION_MINUTES) return MIN_PAYMENT_EXPIRATION_MINUTES
+  if (minutes > MAX_PAYMENT_EXPIRATION_MINUTES) return MAX_PAYMENT_EXPIRATION_MINUTES
+  return minutes
+}
+
+function parseSalonPaymentInfo(value: Record<string, unknown>): SalonPaymentInfo {
+  const raw =
+    value.payment && typeof value.payment === 'object' && !Array.isArray(value.payment)
+      ? (value.payment as Record<string, unknown>)
+      : {}
+
+  return {
+    bankCardNumber: readString(raw.bankCardNumber),
+    bankAccountOwner: readString(raw.bankAccountOwner),
+    paymentPhone: readString(raw.paymentPhone),
+    telegramReceiptUrl: normalizeTelegramReceiptUrl(raw.telegramReceiptUrl),
+    paymentExpirationMinutes: parsePaymentExpirationMinutes(raw.paymentExpirationMinutes),
+  }
+}
+
+export function isCardPaymentConfigured(payment: SalonPaymentInfo): boolean {
+  return Boolean(payment.bankCardNumber && payment.bankAccountOwner && payment.telegramReceiptUrl)
+}
 
 export function parseSalonSettings(raw: unknown): ParsedSalonSettings {
   const value =
@@ -33,6 +102,20 @@ export function parseSalonSettings(raw: unknown): ParsedSalonSettings {
     maxAdvanceBookingDays: maxAdvance,
     sendReminders: typeof value.sendReminders === 'boolean' ? value.sendReminders : true,
     reminderHours,
+    payment: parseSalonPaymentInfo(value),
+  }
+}
+
+export class PaymentInfoMissingError extends Error {
+  constructor() {
+    super('اطلاعات پرداخت سالن کامل نیست — با مدیر سالن تماس بگیرید')
+    this.name = 'PaymentInfoMissingError'
+  }
+}
+
+export function assertCardPaymentConfigured(settings: ParsedSalonSettings): void {
+  if (!isCardPaymentConfigured(settings.payment)) {
+    throw new PaymentInfoMissingError()
   }
 }
 

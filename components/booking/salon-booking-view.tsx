@@ -34,11 +34,13 @@ export function SalonBookingView({
       <header className="salon-header sticky top-0 z-40 backdrop-blur-md">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
-            {appearance.showCharacter && <NailArtistCharacter size="sm" animate={false} />}
+            {appearance.showCharacter && (
+              <NailArtistCharacter size="sm" animate={false} salonName={salonName} />
+            )}
             <div className="min-w-0">
               <p className="font-bold salon-text-primary truncate flex items-center gap-1.5">
                 <Sparkles className="w-4 h-4 salon-accent shrink-0" />
-                {salonName || 'فیر سالن'}
+                {salonName?.trim()}
               </p>
               <p className="text-xs salon-text-muted hidden sm:block">نوبت‌دهی آنلاین</p>
             </div>

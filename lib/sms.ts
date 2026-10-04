@@ -2,7 +2,7 @@
 // Configure your SMS provider via environment variables
 
 interface SMSProvider {
-  sendOTP(phone: string, code: string): Promise<boolean>
+  sendOTP(phone: string, code: string, salonName?: string | null): Promise<boolean>
   sendReminder(phone: string, message: string): Promise<boolean>
   sendNotification(phone: string, message: string): Promise<boolean>
 }
@@ -68,8 +68,11 @@ async function sendSMS(phone: string, message: string): Promise<boolean> {
 }
 
 export const smsService: SMSProvider = {
-  async sendOTP(phone: string, code: string): Promise<boolean> {
-    const message = `کد تایید شما: ${code}\nاین کد تا ۵ دقیقه معتبر است.\n\nفیر سالن`
+  async sendOTP(phone: string, code: string, salonName?: string | null): Promise<boolean> {
+    const name = salonName?.trim()
+    const message = name
+      ? `کد تایید شما: ${code}\nاین کد تا ۵ دقیقه معتبر است.\n\n${name}`
+      : `کد تایید شما: ${code}\nاین کد تا ۵ دقیقه معتبر است.`
     return sendSMS(phone, message)
   },
 

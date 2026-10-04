@@ -24,7 +24,14 @@ export async function GET() {
             service: { select: { name: true, duration: true } },
           },
         },
-        payment: { select: { status: true, paidAt: true } },
+        payment: {
+          select: {
+            status: true,
+            paidAt: true,
+            paymentSubmittedAt: true,
+            paymentRejectionReason: true,
+          },
+        },
         reviews: { select: { id: true, rating: true } },
       },
       orderBy: { startTime: 'desc' },
@@ -49,7 +56,14 @@ export async function GET() {
           name: s.service.name,
           duration: s.service.duration,
         })),
-        payment: apt.payment,
+        payment: apt.payment
+          ? {
+              status: apt.payment.status,
+              paidAt: apt.payment.paidAt,
+              submittedAt: apt.payment.paymentSubmittedAt,
+              rejectionReason: apt.payment.paymentRejectionReason,
+            }
+          : null,
         hasReview: apt.reviews.length > 0,
         reviewRating: apt.reviews[0]?.rating ?? null,
       })),

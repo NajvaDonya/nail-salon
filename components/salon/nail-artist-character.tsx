@@ -16,6 +16,7 @@ interface NailArtistCharacterProps {
   className?: string
   animate?: boolean
   priority?: boolean
+  salonName?: string
 }
 
 const sizeMap = {
@@ -38,6 +39,7 @@ export function NailArtistCharacter({
   className,
   animate = true,
   priority = false,
+  salonName,
 }: NailArtistCharacterProps) {
   const { box, img } = pose === 'atDesk' ? deskSizeMap[size] : sizeMap[size]
 
@@ -51,7 +53,7 @@ export function NailArtistCharacter({
     >
       <Image
         src={CHARACTER_SRC[pose]}
-        alt="نقاش ناخن فیر سالن — بلوند، قد ۱۵۰ سانتی‌متر"
+        alt={salonName?.trim() ? `نقاش ناخن ${salonName.trim()}` : 'نقاش ناخن'}
         width={img}
         height={pose === 'atDesk' ? Math.round((img * 3) / 4) : img}
         priority={priority}

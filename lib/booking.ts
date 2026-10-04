@@ -1,6 +1,7 @@
 // Smart Booking Engine - Slot calculation with conflict detection
 
 import { prisma } from './db'
+import { parseAppointmentDate } from './slot-hold'
 import type { DayOfWeek, TimeSlot, AvailableSlot } from './types'
 import { cleanupExpiredAwaitingPayments } from './appointment-cleanup'
 import { getActiveHolds, slotBlockedByHold } from './slot-hold'
@@ -47,6 +48,25 @@ function dateTimeFromParts(date: Date, time: string): Date {
   return new Date(year, month - 1, day, hours, minutes, 0, 0)
 }
 
+/** Local calendar day bounds — matches how appointment startTime is stored at checkout. */
+function calendarDayBoundsFromKey(dateKey: string): { start: Date; end: Date } {
+  const start = new Date(`${dateKey}T00:00:00`)
+  const end = new Date(start)
+  end.setDate(end.getDate() + 1)
+  return { start, end }
+}
+
+function dateKeyFromAppointmentDate(date: Date): string {
+  return date.toISOString().split('T')[0]
+}
+
+const BLOCKING_APPOINTMENT_STATUSES = [
+  'PENDING',
+  'CONFIRMED',
+  'IN_PROGRESS',
+  'AWAITING_PAYMENT',
+] as const
+
 function timeFromDateTime(value: Date): string {
   const hours = value.getHours().toString().padStart(2, '0')
   const minutes = value.getMinutes().toString().padStart(2, '0')
@@ -72,14 +92,15 @@ async function hasConflict(
   const startMinutes = timeToMinutes(startTime)
   const endMinutes = timeToMinutes(endTime)
 
+  const dateKey = dateKeyFromAppointmentDate(date)
+  const { start: dayStart, end: dayEnd } = calendarDayBoundsFromKey(dateKey)
+
   const appointments = await prisma.appointment.findMany({
     where: {
       ...(excludeAppointmentId ? { id: { not: excludeAppointmentId } } : {}),
       staffId,
-      date,
-      status: {
-        in: ['PENDING', 'CONFIRMED', 'IN_PROGRESS', 'AWAITING_PAYMENT'],
-      },
+      startTime: { gte: dayStart, lt: dayEnd },
+      status: { in: [...BLOCKING_APPOINTMENT_STATUSES] },
     },
     select: {
       startTime: true,
@@ -179,12 +200,15 @@ async function getStaffSlots(
     excludeHoldToken,
   })
 
+  const dateKeyForStaff = dateKeyFromAppointmentDate(date)
+  const { start: dayStart, end: dayEnd } = calendarDayBoundsFromKey(dateKeyForStaff)
+
   const appointments = await prisma.appointment.findMany({
     where: {
       ...(excludeAppointmentId ? { id: { not: excludeAppointmentId } } : {}),
       staffId,
-      date,
-      status: { in: ['PENDING', 'CONFIRMED', 'IN_PROGRESS', 'AWAITING_PAYMENT'] },
+      startTime: { gte: dayStart, lt: dayEnd },
+      status: { in: [...BLOCKING_APPOINTMENT_STATUSES] },
     },
     select: { startTime: true, endTime: true, services: { select: { bufferTime: true } } },
   })
@@ -258,8 +282,7 @@ export async function getStaffAvailableTimes(params: {
   await cleanupExpiredAwaitingPayments()
 
   const dateKey = params.date.split('T')[0]
-  const [year, month, day] = dateKey.split('-').map(Number)
-  const appointmentDate = new Date(year, month - 1, day)
+  const appointmentDate = parseAppointmentDate(dateKey)
 
   const breakSettings = await getStaffBreakSettings(staffId, salonId)
   const forLunch = kind === 'LUNCH'

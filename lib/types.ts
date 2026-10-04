@@ -10,6 +10,17 @@ export type AppointmentStatus =
   | 'CANCELLED' 
   | 'NO_SHOW'
   | 'AWAITING_PAYMENT'
+  | 'EXPIRED'
+
+export type PaymentStatus =
+  | 'PENDING'
+  | 'PAID'
+  | 'FAILED'
+  | 'CANCELLED'
+  | 'SUBMITTED'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'EXPIRED'
 
 export type DayOfWeek = 
   | 'SATURDAY' 
@@ -77,7 +88,30 @@ export const PERSIAN_STATUS: Record<AppointmentStatus, string> = {
   COMPLETED: 'انجام شده',
   CANCELLED: 'لغو شده',
   NO_SHOW: 'عدم مراجعه',
-  AWAITING_PAYMENT: 'در انتظار پرداخت',
+  AWAITING_PAYMENT: 'در انتظار تأیید پرداخت',
+  EXPIRED: 'منقضی شده',
+}
+
+export const PERSIAN_PAYMENT_STATUS: Record<PaymentStatus, string> = {
+  PENDING: 'در انتظار پرداخت',
+  SUBMITTED: 'در انتظار تأیید پرداخت',
+  APPROVED: 'پرداخت تأیید شده',
+  REJECTED: 'پرداخت رد شده',
+  EXPIRED: 'منقضی شده',
+  PAID: 'پرداخت شده',
+  FAILED: 'ناموفق',
+  CANCELLED: 'لغو شده',
+}
+
+export const PAYMENT_STATUS_COLORS: Record<PaymentStatus, string> = {
+  PENDING: 'bg-orange-100 text-orange-800',
+  SUBMITTED: 'bg-yellow-100 text-yellow-800',
+  APPROVED: 'bg-green-100 text-green-800',
+  REJECTED: 'bg-red-100 text-red-800',
+  EXPIRED: 'bg-gray-100 text-gray-800',
+  PAID: 'bg-green-100 text-green-800',
+  FAILED: 'bg-red-100 text-red-800',
+  CANCELLED: 'bg-gray-100 text-gray-800',
 }
 
 // Status colors for UI
@@ -89,6 +123,7 @@ export const STATUS_COLORS: Record<AppointmentStatus, string> = {
   CANCELLED: 'bg-red-100 text-red-800',
   NO_SHOW: 'bg-gray-100 text-gray-800',
   AWAITING_PAYMENT: 'bg-orange-100 text-orange-800',
+  EXPIRED: 'bg-gray-100 text-gray-800',
 }
 
 // Role permissions

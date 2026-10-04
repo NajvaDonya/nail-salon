@@ -4,6 +4,17 @@ import { mapLegacyCategory } from './category-map'
 
 export { mapLegacyCategory } from './category-map'
 
+export async function getPrimarySalonName(): Promise<string | null> {
+  const salon = await prisma.salon.findFirst({
+    where: { isActive: true },
+    orderBy: { createdAt: 'asc' },
+    select: { name: true },
+  })
+
+  const name = salon?.name?.trim()
+  return name || null
+}
+
 export async function getManagerSalonId(
   userId: string,
   salonId: string | null | undefined

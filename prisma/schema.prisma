@@ -22,6 +22,7 @@ enum AppointmentStatus {
   CANCELLED
   NO_SHOW
   AWAITING_PAYMENT
+  EXPIRED
 }
 
 enum PaymentStatus {
@@ -29,6 +30,10 @@ enum PaymentStatus {
   PAID
   FAILED
   CANCELLED
+  SUBMITTED
+  APPROVED
+  REJECTED
+  EXPIRED
 }
 
 enum PendingApprovalType {
@@ -357,7 +362,18 @@ model Payment {
   createdAt     DateTime      @default(now())
   paidAt        DateTime?
 
+  // Card-to-card flow: receipts are sent by the customer in Telegram and never stored here.
+  expirationMinutes      Int       @default(30)
+  paymentSubmittedAt     DateTime?
+  paymentExpiresAt       DateTime?
+  paymentApprovedAt      DateTime?
+  paymentRejectedAt      DateTime?
+  paymentRejectionReason String?   @db.Text
+  approvedBy             String?
+
   appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+
+  @@index([status, paymentExpiresAt])
 }
 
 model SmsLog {

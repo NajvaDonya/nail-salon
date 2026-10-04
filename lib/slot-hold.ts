@@ -21,10 +21,17 @@ function minutesToTime(minutes: number): string {
   return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`
 }
 
+/** Canonical HH:mm so hold rows match between create and verify. */
+export function normalizeSlotTime(time: string): string {
+  const [hours, minutes] = time.split(':').map(Number)
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return time.trim()
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
+}
+
+/** Calendar day for @db.Date — UTC midnight avoids local TZ shifting the stored day. */
 export function parseAppointmentDate(date: string): Date {
   const dateKey = date.split('T')[0]
-  const [year, month, day] = dateKey.split('-').map(Number)
-  return new Date(year, month - 1, day)
+  return new Date(`${dateKey}T00:00:00.000Z`)
 }
 
 export function timesOverlap(
@@ -86,7 +93,8 @@ export async function createOrRefreshSlotHold(params: {
   durationMinutes: number
   holdToken: string
 }) {
-  const { salonId, staffId, date, startTime, durationMinutes, holdToken } = params
+  const { salonId, staffId, date, durationMinutes, holdToken } = params
+  const startTime = normalizeSlotTime(params.startTime)
 
   if (!holdToken) {
     throw new SlotHoldError('شناسه رزرو موقت نامعتبر است')
@@ -161,22 +169,24 @@ export async function verifySlotHold(params: {
   await cleanupExpiredSlotHolds()
 
   const appointmentDate = parseAppointmentDate(params.date)
-  const endTime = minutesToTime(
-    timeToMinutes(params.startTime) + params.durationMinutes
-  )
+  const startTime = normalizeSlotTime(params.startTime)
+  const endTime = minutesToTime(timeToMinutes(startTime) + params.durationMinutes)
 
   const hold = await prisma.slotHold.findFirst({
     where: {
       holdToken: params.holdToken,
       staffId: params.staffId,
       date: appointmentDate,
-      startTime: params.startTime,
-      endTime,
+      startTime,
       expiresAt: { gt: new Date() },
     },
   })
 
   if (!hold) {
+    throw new SlotHoldError('رزرو موقت زمان منقضی شده است — لطفاً دوباره زمان را انتخاب کنید')
+  }
+
+  if (timeToMinutes(hold.endTime) < timeToMinutes(endTime)) {
     throw new SlotHoldError('رزرو موقت زمان منقضی شده است — لطفاً دوباره زمان را انتخاب کنید')
   }
 
@@ -186,7 +196,7 @@ export async function verifySlotHold(params: {
     excludeHoldToken: params.holdToken,
   })
 
-  if (slotBlockedByHold(params.startTime, endTime, otherHolds)) {
+  if (slotBlockedByHold(startTime, endTime, otherHolds)) {
     throw new SlotHoldError('این زمان دیگر در دسترس نیست')
   }
 

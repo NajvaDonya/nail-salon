@@ -8,12 +8,20 @@ export interface SalonAppearance {
 
 export const DEFAULT_COLOR_INTENSITY = 50
 
+/** Previous hardcoded badge. Treated as unset so the live salon name is used instead. */
+export const LEGACY_WELCOME_BADGE = 'خوش آمدید به فیر سالن'
+
 export const DEFAULT_SALON_APPEARANCE: SalonAppearance = {
   hue: 300,
   colorIntensity: DEFAULT_COLOR_INTENSITY,
-  welcomeBadge: 'خوش آمدید به فیر سالن',
+  welcomeBadge: '',
   welcomeSubtitle: 'تاریخ، خدمات و زمان دلخواهت رو انتخاب کن — ما آماده‌ایم ناخن‌هات رو بدرخشونیم!',
   showCharacter: true,
+}
+
+export function defaultWelcomeBadge(salonName?: string | null): string {
+  const name = salonName?.trim()
+  return name ? `خوش آمدید به ${name}` : ''
 }
 
 /** Legacy preset theme → hue mapping for backward compatibility */
@@ -130,24 +138,74 @@ export function buildThemeVarsFromHue(
   }
 }
 
+function readAppearanceRecord(settings: unknown): Record<string, unknown> | null {
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return null
+  const appearance = (settings as Record<string, unknown>).appearance
+  if (!appearance || typeof appearance !== 'object' || Array.isArray(appearance)) return null
+  return appearance as Record<string, unknown>
+}
+
+/**
+ * Custom badge text saved by the manager.
+ * `undefined` means "not customized" (show a greeting that uses the salon name).
+ * An empty string means the manager cleared the field on purpose.
+ */
+export function readWelcomeBadge(settings: unknown): string | undefined {
+  const appearance = readAppearanceRecord(settings)
+  if (!appearance || !Object.prototype.hasOwnProperty.call(appearance, 'welcomeBadge')) {
+    return undefined
+  }
+  const value = appearance.welcomeBadge
+  if (typeof value !== 'string') return undefined
+  if (value.trim() === LEGACY_WELCOME_BADGE) return undefined
+  return value
+}
+
+/**
+ * Custom subtitle saved by the manager.
+ * `undefined` means the default subtitle. An empty string means it was cleared.
+ */
+export function readWelcomeSubtitle(settings: unknown): string | undefined {
+  const appearance = readAppearanceRecord(settings)
+  if (!appearance || !Object.prototype.hasOwnProperty.call(appearance, 'welcomeSubtitle')) {
+    return undefined
+  }
+  const value = appearance.welcomeSubtitle
+  if (typeof value !== 'string') return undefined
+  if (value.trim() === DEFAULT_SALON_APPEARANCE.welcomeSubtitle) return undefined
+  return value
+}
+
+export function resolveWelcomeBadge(stored: string | undefined, salonName?: string | null): string {
+  if (stored === undefined) return defaultWelcomeBadge(salonName)
+  return stored.trim()
+}
+
+export function resolveWelcomeSubtitle(stored: string | undefined): string {
+  if (stored === undefined) return DEFAULT_SALON_APPEARANCE.welcomeSubtitle
+  return stored.trim()
+}
+
 export function parseSalonAppearance(raw: unknown): SalonAppearance {
   if (!raw || typeof raw !== 'object') {
     return { ...DEFAULT_SALON_APPEARANCE }
   }
 
   const value = raw as Record<string, unknown>
+  const welcomeBadge =
+    typeof value.welcomeBadge === 'string' && value.welcomeBadge.trim() !== LEGACY_WELCOME_BADGE
+      ? value.welcomeBadge
+      : ''
+  const welcomeSubtitle =
+    typeof value.welcomeSubtitle === 'string'
+      ? value.welcomeSubtitle
+      : DEFAULT_SALON_APPEARANCE.welcomeSubtitle
 
   return {
     hue: resolveHueFromAppearance(value),
     colorIntensity: normalizeColorIntensity(value.colorIntensity),
-    welcomeBadge:
-      typeof value.welcomeBadge === 'string' && value.welcomeBadge.trim()
-        ? value.welcomeBadge.trim()
-        : DEFAULT_SALON_APPEARANCE.welcomeBadge,
-    welcomeSubtitle:
-      typeof value.welcomeSubtitle === 'string' && value.welcomeSubtitle.trim()
-        ? value.welcomeSubtitle.trim()
-        : DEFAULT_SALON_APPEARANCE.welcomeSubtitle,
+    welcomeBadge,
+    welcomeSubtitle,
     showCharacter: typeof value.showCharacter === 'boolean' ? value.showCharacter : true,
   }
 }
@@ -158,6 +216,15 @@ export function extractSalonAppearance(settings: unknown): SalonAppearance {
   }
 
   return parseSalonAppearance((settings as Record<string, unknown>).appearance)
+}
+
+/** Appearance used on the booking page, with welcome copy resolved from the salon name. */
+export function resolveSalonAppearance(settings: unknown, salonName?: string | null): SalonAppearance {
+  return {
+    ...extractSalonAppearance(settings),
+    welcomeBadge: resolveWelcomeBadge(readWelcomeBadge(settings), salonName),
+    welcomeSubtitle: resolveWelcomeSubtitle(readWelcomeSubtitle(settings)),
+  }
 }
 
 export function appearanceStyleVars(appearance: SalonAppearance): Record<string, string> {
@@ -212,6 +279,19 @@ export function mergeSalonSettings(existing: unknown, incoming: unknown): Record
     merged.appearance = {
       ...baseAppearance,
       ...appearancePatch,
+    }
+  }
+
+  // Payment details arrive as partial patches, so keep the fields the manager did not touch.
+  if (patch.payment && typeof patch.payment === 'object' && !Array.isArray(patch.payment)) {
+    const basePayment =
+      base.payment && typeof base.payment === 'object' && !Array.isArray(base.payment)
+        ? (base.payment as Record<string, unknown>)
+        : {}
+
+    merged.payment = {
+      ...basePayment,
+      ...(patch.payment as Record<string, unknown>),
     }
   }
 
