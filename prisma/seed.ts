@@ -54,6 +54,14 @@ async function main() {
     data: {
       settings: {
         serviceCategories: categoryNames,
+        allowOnlineBooking: true,
+        payment: {
+          bankCardNumber: '6037990000000001',
+          bankAccountOwner: 'مدیر سالن تست',
+          paymentPhone: '09121111111',
+          telegramReceiptUrl: 'https://t.me/e2e_test_receipt',
+          paymentExpirationMinutes: 30,
+        },
       } as unknown as Prisma.InputJsonValue,
     },
   })
@@ -118,12 +126,33 @@ async function main() {
 
   console.log('Created salon working hours')
 
+  let demoService = await prisma.service.findFirst({
+    where: { salonId: salon.id, name: 'مانیکور کلاسیک' },
+  })
+  if (!demoService) {
+    demoService = await prisma.service.create({
+      data: {
+        salonId: salon.id,
+        name: 'مانیکور کلاسیک',
+        duration: 60,
+        price: 350_000,
+        depositAmount: 70_000,
+        category: categoryNames[0]?.name ?? 'ناخن',
+        bufferTime: 0,
+        kind: 'BASE',
+        isActive: true,
+      },
+    })
+  }
+
   await ensureManagerStaffProfile(manager.id, salon.id, {
     specialties: ['مدیریت سالن', 'ناخن'],
+    serviceIds: [demoService.id],
+    isActive: true,
     syncWorkingHoursFromSalon: true,
   })
 
-  console.log('Linked manager user to bookable staff profile')
+  console.log('Linked manager user to bookable staff profile (with demo service)')
 
   console.log('Seed completed successfully!')
   console.log('========================================')

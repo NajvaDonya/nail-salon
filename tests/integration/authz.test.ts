@@ -6,6 +6,11 @@ import { GET as dashPaymentsGet } from '@/app/api/dashboard/payments/route'
 import { POST as reviewPost } from '@/app/api/dashboard/payments/[id]/review/route'
 import { GET as customerPaymentGet } from '@/app/api/customer/appointments/[id]/payment/route'
 import { POST as cronPaymentsPost } from '@/app/api/cron/payments/route'
+import { POST as staffPost } from '@/app/api/dashboard/staff/route'
+import { PATCH as staffPatch } from '@/app/api/dashboard/staff/[id]/route'
+import { PATCH as staffMePatch, GET as staffMeGet } from '@/app/api/dashboard/staff/me/route'
+import { PATCH as schedulePatch } from '@/app/api/dashboard/schedule/route'
+import { seedManagerWithStaffProfile } from '../helpers/db'
 
 describe('authentication and authorization (API)', () => {
   beforeAll(async () => {
@@ -106,5 +111,53 @@ describe('authentication and authorization (API)', () => {
       )
       expect(res.status).toBe(403)
     })
+  })
+
+  it('denies customers from staff and schedule dashboard APIs', async () => {
+    const salon = await seedSalon()
+    const customer = await seedCustomer()
+    const { staff } = await seedManagerWithStaffProfile(salon.id)
+
+    await asUser({ id: customer.id, phone: customer.phone, role: 'CUSTOMER' }, async () => {
+      expect((await staffPost(jsonRequest('http://localhost/api/dashboard/staff', {}))).status).toBe(403)
+      expect(
+        (
+          await staffPatch(
+            jsonRequest(`http://localhost/api/dashboard/staff/${staff.id}`, { isActive: true }),
+            routeParams({ id: staff.id })
+          )
+        ).status
+      ).toBe(403)
+      expect((await staffMeGet()).status).toBe(403)
+      expect(
+        (await staffMePatch(jsonRequest('http://localhost/api/dashboard/staff/me', { providesServices: true })))
+          .status
+      ).toBe(403)
+      expect(
+        (
+          await schedulePatch(
+            jsonRequest('http://localhost/api/dashboard/schedule', {
+              scope: 'staff',
+              staffHours: [],
+            })
+          )
+        ).status
+      ).toBe(403)
+    })
+  })
+
+  it('keeps customer role after forbidden staff/me patch', async () => {
+    const customer = await seedCustomer()
+    await asUser({ id: customer.id, phone: customer.phone, role: 'CUSTOMER' }, async () => {
+      const res = await staffMePatch(
+        jsonRequest('http://localhost/api/dashboard/staff/me', {
+          providesServices: true,
+          role: 'MANAGER',
+        })
+      )
+      expect(res.status).toBe(403)
+    })
+    const after = await prisma.user.findUniqueOrThrow({ where: { id: customer.id } })
+    expect(after.role).toBe('CUSTOMER')
   })
 })

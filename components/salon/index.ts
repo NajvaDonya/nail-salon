@@ -1,5 +1,7 @@
 export { NailArtistCharacter } from './nail-artist-character'
 export { WelcomeBanner } from './welcome-banner'
+export { HeroSlider } from './hero-slider'
+export { BlogSliderSection } from './blog-slider-section'
 export { CharacterTip } from './character-tip'
 export { HueColorSlider } from './hue-color-slider'
 export { ColorIntensitySlider } from './color-intensity-slider'

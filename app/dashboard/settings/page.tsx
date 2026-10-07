@@ -35,6 +35,7 @@ import {
   resolveWelcomeSubtitle,
 } from '@/lib/salon-appearance'
 import { HueColorSlider, ColorIntensitySlider } from '@/components/salon'
+import { ManagerBookableProfileCard } from '@/components/dashboard/manager-bookable-profile'
 
 const fetcher = async (url: string) => {
   const res = await fetch(url, { credentials: 'include', cache: 'no-store' })
@@ -581,7 +582,13 @@ export default function SettingsPage() {
           </motion.div>
         </TabsContent>
 
-        <TabsContent value="booking" className="mt-6">
+        <TabsContent value="booking" className="mt-6 space-y-6">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <ManagerBookableProfileCard />
+          </motion.div>
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}

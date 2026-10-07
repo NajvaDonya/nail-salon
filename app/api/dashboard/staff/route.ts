@@ -185,6 +185,7 @@ export async function POST(request: Request) {
         const managerStaff = await ensureManagerStaffProfile(staffUser.id, salonId, {
           specialties: validatedSpecialties,
           serviceIds,
+          isActive: true,
           syncWorkingHoursFromSalon: true,
         })
 

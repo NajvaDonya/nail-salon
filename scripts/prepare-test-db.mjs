@@ -64,4 +64,13 @@ for (const db of databases) {
     env: { ...process.env, DATABASE_URL: urlForDb(db) },
   })
   console.log(`Migrations applied to ${db}`)
+
+  if (db.endsWith('_e2e')) {
+    execSync('npx tsx prisma/seed.ts', {
+      cwd: root,
+      stdio: 'inherit',
+      env: { ...process.env, DATABASE_URL: urlForDb(db) },
+    })
+    console.log(`Seeded ${db} for E2E`)
+  }
 }

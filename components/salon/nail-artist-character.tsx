@@ -20,10 +20,10 @@ interface NailArtistCharacterProps {
 }
 
 const sizeMap = {
-  sm: { box: 'w-12 h-12', img: 48 },
-  md: { box: 'w-20 h-20', img: 80 },
-  lg: { box: 'w-32 h-32', img: 128 },
-  xl: { box: 'w-40 h-40 md:w-48 md:h-48', img: 192 },
+  sm: { box: 'w-24 h-24', img: 96 },
+  md: { box: 'w-40 h-40', img: 160 },
+  lg: { box: 'w-64 h-64', img: 256 },
+  xl: { box: 'w-80 h-80 md:w-96 md:h-96', img: 384 },
 }
 
 const deskSizeMap = {

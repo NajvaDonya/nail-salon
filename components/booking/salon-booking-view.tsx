@@ -4,7 +4,9 @@ import { Suspense, type CSSProperties } from 'react'
 import Link from 'next/link'
 import { History, Sparkles } from 'lucide-react'
 import { BookingFlow } from '@/components/booking'
-import { WelcomeBanner, NailArtistCharacter } from '@/components/salon'
+import { HeroSlider, BlogSliderSection, NailArtistCharacter } from '@/components/salon'
+import type { HeroGallerySlide } from '@/components/salon/hero-slider'
+import type { BlogSlidePost } from '@/components/salon/blog-slider-section'
 import { Button } from '@/components/ui/button'
 import {
   type SalonAppearance,
@@ -18,6 +20,9 @@ interface SalonBookingViewProps {
   returnTo?: string
   appearance?: SalonAppearance
   maxAdvanceBookingDays?: number
+  heroSlides?: HeroGallerySlide[]
+  blogPosts?: BlogSlidePost[]
+  blogSectionTitle?: string
 }
 
 export function SalonBookingView({
@@ -26,6 +31,9 @@ export function SalonBookingView({
   returnTo,
   appearance = DEFAULT_SALON_APPEARANCE,
   maxAdvanceBookingDays = 30,
+  heroSlides = [],
+  blogPosts = [],
+  blogSectionTitle = 'مجله زیبایی',
 }: SalonBookingViewProps) {
   const themeStyle = appearanceStyleVars(appearance) as CSSProperties
 
@@ -61,12 +69,7 @@ export function SalonBookingView({
 
       <main className="max-w-5xl mx-auto px-4 pb-12">
         <div className="pt-6 pb-8">
-          <WelcomeBanner
-            salonName={salonName}
-            welcomeBadge={appearance.welcomeBadge}
-            subtitle={appearance.welcomeSubtitle}
-            showCharacter={appearance.showCharacter}
-          />
+          <HeroSlider slides={heroSlides} salonName={salonName} appearance={appearance} />
         </div>
 
         <div className="salon-card p-4 md:p-8">
@@ -78,6 +81,8 @@ export function SalonBookingView({
             />
           </Suspense>
         </div>
+
+        <BlogSliderSection title={blogSectionTitle} posts={blogPosts} />
       </main>
     </div>
   )

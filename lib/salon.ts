@@ -5,12 +5,8 @@ import { mapLegacyCategory } from './category-map'
 export { mapLegacyCategory } from './category-map'
 
 export async function getPrimarySalonName(): Promise<string | null> {
-  const salon = await prisma.salon.findFirst({
-    where: { isActive: true },
-    orderBy: { createdAt: 'asc' },
-    select: { name: true },
-  })
-
+  const { getPrimarySalon } = await import('./primary-salon')
+  const salon = await getPrimarySalon()
   const name = salon?.name?.trim()
   return name || null
 }

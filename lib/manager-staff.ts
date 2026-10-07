@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client'
 import type { PrismaClient, Staff } from '@prisma/client'
 import { prisma as defaultPrisma } from '@/lib/db'
 import { WEEK_DAYS } from '@/lib/schedule'
@@ -17,7 +18,7 @@ export interface EnsureManagerStaffOptions {
 
 /**
  * Ensures the salon manager (same User, role stays MANAGER) has a Staff profile for booking.
- * Does not create a duplicate User or change role.
+ * Does not create a duplicate User or change role. Idempotent via @@unique([userId, salonId]).
  */
 export async function ensureManagerStaffProfile(
   userId: string,
@@ -38,30 +39,44 @@ export async function ensureManagerStaffProfile(
     throw new Error('مدیر به این سالن تعلق ندارد')
   }
 
-  const specialties = options.specialties ?? ['مدیریت سالن']
-  const isActive = options.isActive ?? true
+  const createSpecialties = options.specialties ?? ['مدیریت سالن']
+  const createIsActive = options.isActive ?? false
 
-  let staff = await db.staff.findUnique({
-    where: { userId_salonId: { userId, salonId } },
-  })
-
-  if (!staff) {
-    staff = await db.staff.create({
-      data: {
+  let staff: Staff
+  try {
+    staff = await db.staff.upsert({
+      where: { userId_salonId: { userId, salonId } },
+      create: {
         userId,
         salonId,
-        specialties,
-        isActive,
+        specialties: createSpecialties,
+        isActive: createIsActive,
       },
-    })
-  } else if (options.specialties !== undefined || options.isActive !== undefined) {
-    staff = await db.staff.update({
-      where: { id: staff.id },
-      data: {
+      update: {
         ...(options.specialties !== undefined ? { specialties: options.specialties } : {}),
         ...(options.isActive !== undefined ? { isActive: options.isActive } : {}),
       },
     })
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002'
+    ) {
+      staff = await db.staff.findUniqueOrThrow({
+        where: { userId_salonId: { userId, salonId } },
+      })
+      if (options.specialties !== undefined || options.isActive !== undefined) {
+        staff = await db.staff.update({
+          where: { id: staff.id },
+          data: {
+            ...(options.specialties !== undefined ? { specialties: options.specialties } : {}),
+            ...(options.isActive !== undefined ? { isActive: options.isActive } : {}),
+          },
+        })
+      }
+    } else {
+      throw error
+    }
   }
 
   if (options.serviceIds?.length) {
@@ -93,7 +108,7 @@ export async function ensureManagerStaffProfile(
           const row = byDay.get(dayOfWeek)
           const closed = row?.isClosed ?? false
           return {
-            staffId: staff!.id,
+            staffId: staff.id,
             dayOfWeek,
             startTime: row?.openTime ?? '09:00',
             endTime: row?.closeTime ?? '18:00',

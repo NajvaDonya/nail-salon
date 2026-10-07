@@ -31,6 +31,8 @@ import {
   Clock,
   ChevronDown,
   ClipboardList,
+  Images,
+  Newspaper,
 } from 'lucide-react'
 
 const managerNavItems = [
@@ -40,9 +42,12 @@ const managerNavItems = [
   { href: '/dashboard/services', label: 'خدمات', icon: Scissors },
   { href: '/dashboard/visit-types', label: 'نوع مراجعه', icon: ClipboardList },
   { href: '/dashboard/schedule', label: 'ساعات سالن', icon: Clock },
+  { href: '/staff/schedule', label: 'برنامه کاری من', icon: User },
   { href: '/dashboard/reviews', label: 'نظرات', icon: Star },
   { href: '/dashboard/analytics', label: 'گزارشات', icon: BarChart3 },
   { href: '/dashboard/settings', label: 'تنظیمات', icon: Settings },
+  { href: '/dashboard/cms/gallery', label: 'گالری (CMS)', icon: Images },
+  { href: '/dashboard/cms/blog', label: 'بلاگ (CMS)', icon: Newspaper },
 ]
 
 interface DashboardLayoutProps {

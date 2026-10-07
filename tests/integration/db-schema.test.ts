@@ -68,7 +68,11 @@ describe('database and prisma', () => {
       WHERE TABLE_SCHEMA = DATABASE()
         AND (COLUMN_NAME LIKE '%receipt%' OR COLUMN_NAME LIKE '%attachment%' OR COLUMN_NAME LIKE '%image%')
     `
-    const offenders = rows.filter((row) => !/telegramReceiptUrl/i.test(row.COLUMN_NAME))
+    const cmsImageColumns = new Set(['coverImage', 'imageUrl'])
+    const offenders = rows.filter(
+      (row) =>
+        !/telegramReceiptUrl/i.test(row.COLUMN_NAME) && !cmsImageColumns.has(row.COLUMN_NAME)
+    )
     expect(offenders).toEqual([])
   })
 

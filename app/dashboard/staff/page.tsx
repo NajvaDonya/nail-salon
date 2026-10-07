@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import useSWR from 'swr'
@@ -614,6 +615,17 @@ export default function StaffPage() {
                             <Badge variant="secondary">حساب مدیر سالن</Badge>
                           ) : null}
                         </CardTitle>
+                        {member.isManagerAccount ? (
+                          <CardDescription className="text-xs mt-1">
+                            <Link href="/staff/schedule" className="text-primary hover:underline">
+                              برنامه کاری من
+                            </Link>
+                            {' · '}
+                            <Link href="/dashboard/settings" className="text-primary hover:underline">
+                              تنظیم خدمات رزرو
+                            </Link>
+                          </CardDescription>
+                        ) : null}
                         <CardDescription className="flex items-center gap-1">
                           <Star className="w-3 h-3 fill-warning text-warning" />
                           {englishToPersian(member.averageRating.toFixed(1))}

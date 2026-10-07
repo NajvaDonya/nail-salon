@@ -24,12 +24,13 @@ export function WelcomeBanner({
       className="salon-banner relative overflow-hidden rounded-[2rem] p-6 md:p-8"
     >
       <div className="absolute top-4 left-6 text-2xl opacity-60 animate-pulse">✨</div>
-      <div className="absolute bottom-6 left-1/3 text-xl opacity-50">💅</div>
       <div className="absolute top-8 right-1/4 text-lg opacity-40">⭐</div>
 
       <div className="relative flex flex-col md:flex-row items-center gap-6 md:gap-8">
         {showCharacter && (
-          <NailArtistCharacter size="xl" pose="atDesk" priority animate salonName={salonName} />
+          <div className="w-full md:flex-1 md:min-w-0 flex justify-center items-center">
+            <NailArtistCharacter size="xl" pose="atDesk" priority animate salonName={salonName} />
+          </div>
         )}
 
         <div className="flex-1 text-center md:text-right space-y-3">

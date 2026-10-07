@@ -1,7 +1,23 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { defineConfig } from '@playwright/test'
-import { assertMySqlTestDatabase } from './tests/helpers/env'
+
+function assertMySqlTestDatabase(url: string | undefined) {
+  const trimmed = url?.trim()
+  if (!trimmed) {
+    throw new Error('Missing DATABASE_URL for Playwright. Set it in .env.test.')
+  }
+  if (!trimmed.toLowerCase().startsWith('mysql://')) {
+    throw new Error(`Test DATABASE_URL must use mysql:// (got "${trimmed.split(':')[0]}:").`)
+  }
+  const pathMatch = trimmed.match(/\/([^/?]+)(?:\?|$)/)
+  const databaseName = pathMatch?.[1] ?? ''
+  if (!/_(test|e2e)$/i.test(databaseName)) {
+    throw new Error(
+      `Refusing to run Playwright against database "${databaseName}". Use a *_test or *_e2e schema.`
+    )
+  }
+}
 
 /**
  * Minimal .env.test loader. Kept inline so the Playwright config has no dotenv dependency
@@ -45,9 +61,20 @@ for (const [key, value] of Object.entries(testEnv)) {
 }
 assertMySqlTestDatabase(testEnv.DATABASE_URL ?? process.env.DATABASE_URL)
 
-const BASE_URL = testEnv.NEXT_PUBLIC_APP_URL || 'http://localhost:3100'
+const reuseDevServer = process.env.PLAYWRIGHT_REUSE_DEV === '1'
+const BASE_URL = reuseDevServer
+  ? process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3000'
+  : testEnv.NEXT_PUBLIC_APP_URL || 'http://localhost:3100'
+
+function webServerEnv(): Record<string, string> {
+  const merged = { ...testEnv, ...process.env }
+  return Object.fromEntries(
+    Object.entries(merged).filter((entry): entry is [string, string] => typeof entry[1] === 'string')
+  )
+}
 
 export default defineConfig({
+  globalSetup: resolve(__dirname, 'scripts/playwright-global-setup.mjs'),
   testDir: './e2e',
   // The whole suite shares a single test database, so never run files concurrently.
   workers: 1,
@@ -60,13 +87,15 @@ export default defineConfig({
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
-  webServer: {
-    command: 'npx next dev -p 3100',
-    url: BASE_URL,
-    reuseExistingServer: !process.env.CI,
-    timeout: 180_000,
-    env: testEnv,
-  },
+  webServer: reuseDevServer
+    ? undefined
+    : {
+        command: 'npx next dev -p 3100',
+        url: BASE_URL,
+        reuseExistingServer: !process.env.CI,
+        timeout: 180_000,
+        env: webServerEnv(),
+      },
   projects: [
     {
       // Route-level tests drive the `request` fixture only; no browser is launched.

@@ -132,13 +132,22 @@ function Carousel({
   )
 }
 
-function CarouselContent({ className, ...props }: React.ComponentProps<'div'>) {
+function CarouselContent({
+  className,
+  viewportClassName,
+  viewportStyle,
+  ...props
+}: React.ComponentProps<'div'> & {
+  viewportClassName?: string
+  viewportStyle?: React.CSSProperties
+}) {
   const { carouselRef, orientation } = useCarousel()
 
   return (
     <div
       ref={carouselRef}
-      className="overflow-hidden"
+      className={cn('overflow-hidden', viewportClassName)}
+      style={viewportStyle}
       data-slot="carousel-content"
     >
       <div

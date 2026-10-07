@@ -33,6 +33,9 @@ docker compose -f docker-compose.test.yml up -d
 cp .env.test.example .env.test
 npm run db:test:prepare
 npm run test:integration
+npm run db:ensure-manager-staff   # backfill Staff profile for salon owners (dev DB)
+npm run test:e2e                  # Playwright (seeds nail_salon_e2e via globalSetup)
+# With `npm run dev` already on :3000: PLAYWRIGHT_REUSE_DEV=1 npm run test:e2e
 ```
 
 پورت **3307** روی host به MySQL داخل کانتینر وصل است؛ رمز root در compose: `test_root_password`.

@@ -34,6 +34,8 @@ export const ALL_TABLES = [
   'ServiceAddon',
   'Service',
   'VisitType',
+  'GalleryImage',
+  'BlogPost',
   'Staff',
   'OtpCode',
   'User',
