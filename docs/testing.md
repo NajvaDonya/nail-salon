@@ -51,6 +51,7 @@ npm run test:e2e                  # Playwright (seeds nail_salon_e2e via globalS
    SMS_PROVIDER="console"
    MOCK_OTP="true"
    CRON_SECRET="test-cron-secret"
+   # Production SMS uses sms.ir: SMS_PROVIDER=smsir + SMS_IR_* (see .env.example). Keep console in tests.
    NEXT_PUBLIC_APP_URL="http://localhost:3100"
    ```
 
